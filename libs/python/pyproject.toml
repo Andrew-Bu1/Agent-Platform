@@ -1,0 +1,18 @@
+[project]
+name = "common"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Andrew-Bu1", email = "andrewbuianh30@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.31.0",
+    "pydantic-settings>=2.12.0",
+    "redis[hiredis]>=7.1.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.4,<0.9.0"]
+build-backend = "uv_build"
