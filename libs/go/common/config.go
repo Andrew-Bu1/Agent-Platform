@@ -21,6 +21,14 @@ type PostgresConfig struct {
 	Database string
 }
 
+type MinioConfig struct {
+	Endpoint 	  	string
+	AccessKeyID     string
+	SecretAccessKey string
+	Bucket			string
+	Region			string
+}
+
 func GetEnvString(key, defaultValue string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
