@@ -1,9 +1,10 @@
-package common
+package database
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"libs/go/common/config"
 
 	_ "github.com/lib/pq"
 )
@@ -16,7 +17,7 @@ func NewPostgresClient() *PostgresClient {
 	return &PostgresClient{}
 }
 
-func (c *PostgresClient) Connect(ctx context.Context, cfg PostgresConfig) error {
+func (c *PostgresClient) Connect(ctx context.Context, cfg config.PostgresConfig) error {
 	connStr := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Database,

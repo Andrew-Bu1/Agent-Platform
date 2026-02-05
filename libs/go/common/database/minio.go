@@ -1,9 +1,10 @@
-package common
+package database
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"libs/go/common/config"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -20,7 +21,7 @@ func NewMinioClient(bucket string) *MinioClient {
 	}
 }
 
-func (c *MinioClient) Connect(ctx context.Context, cfg MinioConfig) error {
+func (c *MinioClient) Connect(ctx context.Context, cfg config.MinioConfig) error {
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(
 			cfg.AccessKeyID, 

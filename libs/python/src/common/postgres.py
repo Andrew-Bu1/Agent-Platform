@@ -13,21 +13,21 @@ class PostgresClient:
     
     def __init__(
         self,
-        database_url: str,
+        postgres_url: str,
     ):
         """
         Initialize Postgres client.
         
         Args:
-            database_url: PostgreSQL connection URL
+            postgres_url: PostgreSQL connection URL
         """
-        self.database_url = database_url
+        self.postgres_url = postgres_url
         self._conn: Connection | None = None
     
     async def connect(self) -> None:
         """Establish database connection."""
         if self._conn is None:
-            self._conn = await asyncpg.connect(self.database_url)
+            self._conn = await asyncpg.connect(self.postgres_url)
             logger.info("Connected to PostgreSQL")
     
     async def disconnect(self) -> None:

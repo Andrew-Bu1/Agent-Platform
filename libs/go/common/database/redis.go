@@ -1,8 +1,9 @@
-package common
+package database
 
 import (
 	"context"
 	"fmt"
+	"libs/go/common/config"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -16,7 +17,7 @@ func NewRedisClient() *RedisClient {
 	return &RedisClient{}
 }
 
-func (c *RedisClient) Connect(ctx context.Context, cfg RedisConfig) error {
+func (c *RedisClient) Connect(ctx context.Context, cfg config.RedisConfig) error {
 	c.client = redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		Password: cfg.Password,

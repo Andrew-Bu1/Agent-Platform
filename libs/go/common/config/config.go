@@ -1,4 +1,4 @@
-package common
+package config
 
 import (
 	"os"
@@ -65,5 +65,15 @@ func LoadPostgresConfig() PostgresConfig {
 		User:     GetEnvString("POSTGRES_USER", "postgres"),
 		Password: GetEnvString("POSTGRES_PASSWORD", ""),
 		Database: GetEnvString("POSTGRES_DATABASE", "postgres"),
+	}
+}
+
+func LoadMinioConfig() MinioConfig {
+	return MinioConfig{
+		Endpoint:       	GetEnvString("MINIO_ENDPOINT", "localhost:9000"),
+		AccessKeyID:    	GetEnvString("MINIO_ACCESS_KEY_ID", "minioadmin"),
+		SecretAccessKey: 	GetEnvString("MINIO_SECRET_ACCESS_KEY", "minioadmin"),
+		Bucket:			GetEnvString("MINIO_BUCKET", "datahub"),
+		Region:			GetEnvString("MINIO_REGION", "us-east-1"),
 	}
 }
