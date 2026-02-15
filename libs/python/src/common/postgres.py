@@ -3,7 +3,6 @@ import logging
 from contextlib import asynccontextmanager
 
 import asyncpg
-from asyncpg import Connection
 
 logger = logging.getLogger(__name__)
 
@@ -22,27 +21,27 @@ class PostgresClient:
             postgres_url: PostgreSQL connection URL
         """
         self.postgres_url = postgres_url
-        self._conn: Connection | None = None
+        self._pool: asyncpg.Pool | None = None
     
     async def connect(self) -> None:
         """Establish database connection."""
-        if self._conn is None:
-            self._conn = await asyncpg.connect(self.postgres_url)
+        if self._pool is None:
+            self._pool = await asyncpg.create_pool(self.postgres_url)
             logger.info("Connected to PostgreSQL")
     
     async def disconnect(self) -> None:
         """Close database connection."""
-        if self._conn:
-            await self._conn.close()
-            self._conn = None
+        if self._pool:
+            await self._pool.close()
+            self._pool = None
             logger.info("Disconnected from PostgreSQL")
     
     @property
-    def conn(self) -> Connection:
+    def pool(self) -> asyncpg.Pool:
         """Get connection instance."""
-        if self._conn is None:
+        if self._pool is None:
             raise RuntimeError("PostgreSQL client not connected. Call connect() first.")
-        return self._conn
+        return self._pool
         
     async def execute(
         self,
@@ -61,7 +60,29 @@ class PostgresClient:
             )
             ```
         """
-        return await self.conn.execute(query, *args, timeout=timeout)
+        return await self.pool.execute(query, *args, timeout=timeout)
+
+    async def fetch(
+        self,
+        query: str,
+        *args,
+        timeout: float | None = None,
+    ) -> list[asyncpg.Record]:  
+        """
+        Fetch multiple rows.
+        """
+        return await self.pool.fetch(query, *args, timeout=timeout)
+
+    async def fetchrow(
+        self,
+        query: str,
+        *args,
+        timeout: float | None = None,
+    ) -> asyncpg.Record | None:
+        """
+        Fetch a single row.
+        """
+        return await self.pool.fetchrow(query, *args, timeout=timeout)
   
     
     @asynccontextmanager
@@ -76,6 +97,6 @@ class PostgresClient:
                 await postgres.execute("INSERT INTO profiles ...")
             ```
         """
-        async with self.conn.transaction():
+        async with self.pool.transaction():
             yield
     
