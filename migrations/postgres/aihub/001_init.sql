@@ -28,4 +28,3 @@ CREATE TABLE IF NOT EXISTS model_usage_logs (
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-

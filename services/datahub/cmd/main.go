@@ -1,64 +1,78 @@
+// @title           DataHub API
+// @version         1.0
+// @description     DataHub manages datasources, documents, ingestions, and chunks.
+// @host            localhost:8080
+// @BasePath        /
+
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 
-	"services/datahub/config"
+	_ "services/datahub/docs"
+	"services/datahub/internal/config"
+	"services/datahub/internal/handler"
+	"services/datahub/internal/repository"
+	"services/datahub/internal/service"
+
+	"github.com/joho/godotenv"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func main() {
-	// Load configuration (includes common + datahub-specific)
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, reading from environment")
+	}
 	cfg := config.Load()
 
-	// Setup router
+	ctx := context.Background()
+	pool, err := repository.NewPool(ctx, cfg.PostgresConfig())
+	if err != nil {
+		log.Fatalf("failed to connect to postgres: %v", err)
+	}
+	defer pool.Close()
+	log.Println("connected to postgres")
+
+	// Repositories
+	datasourceRepo := repository.NewDatasourceRepository(pool)
+	documentRepo := repository.NewDocumentRepository(pool)
+	ingestionRepo := repository.NewIngestionRepository(pool)
+	chunkRepo := repository.NewChunkRepository(pool)
+
+	// Services
+	datasourceSvc := service.NewDatasourceService(datasourceRepo)
+	documentSvc := service.NewDocumentService(documentRepo)
+	ingestionSvc := service.NewIngestionService(ingestionRepo)
+	chunkSvc := service.NewChunkService(chunkRepo)
+
+	// Handlers
+	datasourceHandler := handler.NewDatasourceHandler(datasourceSvc)
+	documentHandler := handler.NewDocumentHandler(documentSvc)
+	ingestionHandler := handler.NewIngestionHandler(ingestionSvc)
+	chunkHandler := handler.NewChunkHandler(chunkSvc)
+
 	mux := http.NewServeMux()
 
-	// Health check endpoint
-	mux.HandleFunc("/health", healthCheckHandler)
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"status":"ok"}`)
+	})
 
-	// Root endpoint
-	mux.HandleFunc("/", rootHandler)
+	datasourceHandler.RegisterRoutes(mux)
+	documentHandler.RegisterRoutes(mux)
+	ingestionHandler.RegisterRoutes(mux)
+	chunkHandler.RegisterRoutes(mux)
 
-	// Get port from config or default
-	port := cfg.Port
-	if port == 0 {
-		port = 8080
+	mux.Handle("/swagger/", httpSwagger.WrapHandler)
+
+	addr := fmt.Sprintf(":%d", cfg.Port)
+	log.Printf("datahub starting on %s", addr)
+
+	if err := http.ListenAndServe(addr, handler.LoggingMiddleware(mux)); err != nil {
+		log.Fatalf("server error: %v", err)
 	}
-
-	addr := fmt.Sprintf(":%d", port)
-	log.Printf("Starting datahub server on %s", addr)
-
-	// Start server
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
-}
-
-// healthCheckHandler handles health check requests
-func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	response := map[string]interface{}{
-		"status":  "healthy",
-		"service": "datahub",
-	}
-
-	json.NewEncoder(w).Encode(response)
-}
-
-// rootHandler handles root requests
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	response := map[string]interface{}{
-		"message": "Welcome to Datahub API",
-		"version": "1.0.0",
-	}
-
-	json.NewEncoder(w).Encode(response)
 }

@@ -5,9 +5,13 @@ import (
 )
 
 type Config struct {
-	postgresConfig 		*config.PostgresConfig
-	minioConfig 		*config.MinioConfig
-	Port			int
+	postgresConfig *config.PostgresConfig
+	minioConfig    *config.MinioConfig
+	Port           int
+}
+
+func (c *Config) PostgresConfig() *config.PostgresConfig {
+	return c.postgresConfig
 }
 
 func Load() *Config {
