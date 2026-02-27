@@ -9,6 +9,7 @@ import (
 type RedisConfig struct {
 	Host     string
 	Port     int
+	User	 string
 	Password string
 	DB       int
 }
@@ -53,6 +54,7 @@ func LoadRedisConfig() RedisConfig {
 	return RedisConfig{
 		Host:     	GetEnvString("REDIS_HOST", "localhost"),
 		Port:     	GetEnvInt("REDIS_PORT", 6379),
+		User: 		GetEnvString("REDIS_USER", ""),
 		Password: 	GetEnvString("REDIS_PASSWORD", ""),
 		DB:			GetEnvInt("REDIS_DB", 0),
 	}
