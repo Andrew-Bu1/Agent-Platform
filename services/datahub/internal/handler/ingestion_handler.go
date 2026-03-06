@@ -10,6 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	ChunkStrategySemanticChunking 	= "semantic_chunking"
+	ChunkStrategyFixedSize        	= "fixed_size"
+	ChunkStrategyRecursiveSplit		= "recursive_split"
+)
+
 type IngestionHandler struct {
 	svc *service.IngestionService
 }
@@ -26,13 +32,14 @@ func (h *IngestionHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // Create godoc
-// @Summary      Create an ingestion
+// @Summary      Create and trigger an ingestion
+// @Description  Creates an ingestion record with status "processing" and immediately enqueues a chunk job.
 // @Tags         ingestions
 // @Accept       json
 // @Produce      json
 // @Param        document_id  path      string                        true  "Document ID"
 // @Param        body         body      model.CreateIngestionRequest  true  "Ingestion config"
-// @Success      201          {object}  model.IngestionResponse
+// @Success      202          {object}  model.IngestionResponse
 // @Failure      400          {object}  map[string]string
 // @Failure      500          {object}  map[string]string
 // @Router       /documents/{document_id}/ingestions [post]
@@ -54,6 +61,14 @@ func (h *IngestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "chunk_strategy is required")
 		return
 	}
+
+	if req.ChunkStrategy != ChunkStrategySemanticChunking &&
+		req.ChunkStrategy != ChunkStrategyFixedSize &&
+		req.ChunkStrategy != ChunkStrategyRecursiveSplit {
+		writeError(w, http.StatusBadRequest, "invalid chunk_strategy")
+		return
+	}
+	
 	if req.EmbeddingModel == "" {
 		writeError(w, http.StatusBadRequest, "embedding_model is required")
 		return
@@ -65,7 +80,7 @@ func (h *IngestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, resp)
+	writeJSON(w, http.StatusAccepted, resp)
 }
 
 // ListByDocument godoc

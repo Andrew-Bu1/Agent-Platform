@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"services/datahub/internal/model"
 	"services/datahub/internal/repository"
+	"services/datahub/internal/storage"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -15,20 +17,30 @@ import (
 var ErrDuplicateFile = errors.New("file with the same hash already exists in this datasource")
 
 type DocumentService struct {
-	repo *repository.DocumentRepository
+	repo  *repository.DocumentRepository
+	minio *storage.MinioStorage
 }
 
-func NewDocumentService(repo *repository.DocumentRepository) *DocumentService {
-	return &DocumentService{repo: repo}
+func NewDocumentService(repo *repository.DocumentRepository, minio *storage.MinioStorage) *DocumentService {
+	return &DocumentService{repo: repo, minio: minio}
 }
 
-func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRequest, name, storagePath, fileHash string) (*model.DocumentResponse, error) {
+// Create uploads the file to MinIO then persists the document record.
+// The caller passes the raw file bytes; storagePath is computed here.
+func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRequest, name string, data []byte, fileHash string) (*model.DocumentResponse, error) {
 	existing, err := s.repo.FindByHash(ctx, req.DatasourceID, fileHash)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
 	if existing != nil {
 		return nil, ErrDuplicateFile
+	}
+
+	// Upload to MinIO: path = <datasource_id>/<filename>
+	objectName := fmt.Sprintf("%s/%s", req.DatasourceID, name)
+	storagePath, err := s.minio.UploadFile(ctx, objectName, data)
+	if err != nil {
+		return nil, fmt.Errorf("upload to minio: %w", err)
 	}
 
 	now := time.Now().UTC()

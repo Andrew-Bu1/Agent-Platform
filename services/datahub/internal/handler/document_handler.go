@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 
@@ -86,15 +85,12 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		metadata = json.RawMessage(raw)
 	}
 
-	// Storage path pattern — replace with real Minio upload when storage is wired
-	storagePath := fmt.Sprintf("%s/%s", datasourceID, header.Filename)
-
 	req := model.CreateDocumentRequest{
 		DatasourceID: datasourceID,
 		Metadata:     metadata,
 	}
 
-	resp, err := h.svc.Create(r.Context(), req, header.Filename, storagePath, fileHash)
+	resp, err := h.svc.Create(r.Context(), req, header.Filename, data, fileHash)
 	if err != nil {
 		if errors.Is(err, service.ErrDuplicateFile) {
 			writeError(w, http.StatusConflict, err.Error())

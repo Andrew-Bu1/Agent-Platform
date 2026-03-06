@@ -15,8 +15,10 @@ import (
 	_ "services/datahub/docs"
 	"services/datahub/internal/config"
 	"services/datahub/internal/handler"
+	"services/datahub/internal/queue"
 	"services/datahub/internal/repository"
 	"services/datahub/internal/service"
+	"services/datahub/internal/storage"
 
 	"github.com/joho/godotenv"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -42,10 +44,25 @@ func main() {
 	ingestionRepo := repository.NewIngestionRepository(pool)
 	chunkRepo := repository.NewChunkRepository(pool)
 
+	// MinIO storage
+	minioStorage, err := storage.NewMinioStorage(cfg.MinioConfig())
+	if err != nil {
+		log.Fatalf("failed to connect to minio: %v", err)
+	}
+	if err := minioStorage.EnsureBucket(ctx); err != nil {
+		log.Fatalf("failed to ensure minio bucket: %v", err)
+	}
+	log.Println("connected to minio")
+
+	// Redis queue
+	redisQueue := queue.NewRedisQueue(cfg.RedisConfig())
+	defer redisQueue.Close()
+	log.Println("redis queue ready")
+
 	// Services
 	datasourceSvc := service.NewDatasourceService(datasourceRepo)
-	documentSvc := service.NewDocumentService(documentRepo)
-	ingestionSvc := service.NewIngestionService(ingestionRepo)
+	documentSvc := service.NewDocumentService(documentRepo, minioStorage)
+	ingestionSvc := service.NewIngestionService(ingestionRepo, documentRepo, redisQueue)
 	chunkSvc := service.NewChunkService(chunkRepo)
 
 	// Handlers
@@ -59,7 +76,6 @@ func main() {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"status":"ok"}`)
 	})
 
 	datasourceHandler.RegisterRoutes(mux)
