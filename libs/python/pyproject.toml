@@ -3,13 +3,11 @@ name = "common"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "Andrew-Bu1", email = "andrewbuianh30@gmail.com" }
-]
 requires-python = ">=3.12"
 dependencies = [
     "asyncpg>=0.31.0",
-    "redis[hiredis]>=7.1.0",
+    "pydantic>=2.12.5",
+    "redis>=7.3.0",
 ]
 
 [build-system]
