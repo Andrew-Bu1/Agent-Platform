@@ -1,19 +1,24 @@
-import os
-from pydantic import BaseModel
-
-class AppConfig(BaseModel):
+from pydantic_settings import BaseSettings, SettingsConfigDict
+class AppConfig(BaseSettings):
     """Application configuration model."""
-    app_name: str
-    debug: bool = False
+    model_config = SettingsConfigDict(env_prefix="APP_", env_file=".env", extra="ignore")
+
+    name: str
+    env: str
     version: str = "1.0.0"
 
-class OpenRouterConfig(BaseModel):
+
+class OpenRouterConfig(BaseSettings):
     """OpenRouter API configuration model."""
+    model_config = SettingsConfigDict(env_prefix="OPENROUTER_", env_file=".env", extra="ignore")
+
     api_key: str
     base_url: str = "https://openrouter.ai/api/v1"
 
-class PostgresConfig(BaseModel):
+class PostgresConfig(BaseSettings):
     """PostgreSQL database configuration model."""
+    model_config = SettingsConfigDict(env_prefix="POSTGRES_", env_file=".env", extra="ignore")
+
     host: str
     port: int
     username: str
@@ -24,9 +29,11 @@ class PostgresConfig(BaseModel):
     def url(self) -> str:
         """Construct the PostgreSQL connection URL."""
         return f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
-
-class RedisConfig(BaseModel):
+    
+class RedisConfig(BaseSettings):
     """Redis configuration model."""
+    model_config = SettingsConfigDict(env_prefix="REDIS_", env_file=".env", extra="ignore")
+
     host: str
     port: int
     user: str
@@ -37,38 +44,3 @@ class RedisConfig(BaseModel):
     def url(self) -> str:
         """Construct the Redis connection URL."""
         return f"redis://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
-    
-def load_redis_config() -> RedisConfig:
-    """Load Redis configuration from environment variables."""
-    return RedisConfig(
-        host=os.getenv("REDIS_HOST", "localhost"),
-        port=int(os.getenv("REDIS_PORT", 6379)),
-        user=os.getenv("REDIS_USER", "default"),
-        password=os.getenv("REDIS_PASSWORD", ""),
-        db=int(os.getenv("REDIS_DB", 0)),
-    )
-
-def load_postgres_config() -> PostgresConfig:
-    """Load PostgreSQL configuration from environment variables."""
-    return PostgresConfig(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=int(os.getenv("POSTGRES_PORT", 5432)),
-        username=os.getenv("POSTGRES_USER", "postgres"),
-        password=os.getenv("POSTGRES_PASSWORD", ""),
-        database=os.getenv("POSTGRES_DB", "postgres"),
-    )
-
-def load_app_config() -> AppConfig:
-    """Load application configuration from environment variables."""
-    return AppConfig(
-        app_name=os.getenv("APP_NAME", "AIHub"),
-        debug=os.getenv("DEBUG", "false").lower() == "true",
-        version=os.getenv("APP_VERSION", "1.0.0"),
-    )
-
-def load_open_router_config() -> OpenRouterConfig:
-    """Load OpenRouter API configuration from environment variables."""
-    return OpenRouterConfig(
-        api_key=os.getenv("OPENROUTER_API_KEY", ""),
-        base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-    )
