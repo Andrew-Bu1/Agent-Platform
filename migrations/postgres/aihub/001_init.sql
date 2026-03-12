@@ -1,30 +1,32 @@
 CREATE TABLE IF NOT EXISTS model_configs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    model_id VARCHAR(255) NOT NULL UNIQUE,
+    id UUID PRIMARY KEY,
+
+    name VARCHAR(255) UNIQUE NOT NULL,
     task_type VARCHAR(255) NOT NULL,
     provider VARCHAR(255) NOT NULL,
 
-    storage_uri TEXT,
+    endpoint_url TEXT,
 
-    input_cost_per_1k_tokens  DECIMAL(12,6),
-    output_cost_per_1k_tokens DECIMAL(12,6),
+    input_cost  NUMERIC(12,6),
+    output_cost NUMERIC(12,6),
 
-    default_params JSONB,
+    is_active BOOLEAN DEFAULT TRUE,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    is_active BOOLEAN DEFAULT TRUE
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 
 );
 
 CREATE TABLE IF NOT EXISTS model_usage_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    model_id VARCHAR(100) NOT NULL REFERENCES model_configs(model_id),
+    model_id UUID NOT NULL REFERENCES model_configs(id),
 
     input_tokens INT,
     output_tokens INT,
-    total_tokens INT,
     
-    total_cost DECIMAL(12,6),
+    cost NUMERIC(12,6),
+
+    status VARCHAR(50),
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -1,15 +1,21 @@
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from functools import lru_cache
+from common.config import (
+    AppConfig,
+    OpenRouterConfig,
+    PostgresConfig,
+)
 
-class Settings(BaseSettings):
-    redis_url: str
-    postgres_url: str
-    log_level: str = "INFO"
-    port: int = 8000
-    
-    model_config = SettingsConfigDict(env_file=".env")
+from dataclasses import dataclass
 
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
+@dataclass
+class Settings:
+    app: AppConfig
+    postgres: PostgresConfig
+    open_router: OpenRouterConfig
+
+def load_settings() -> Settings:
+    """Load all application settings."""
+    return Settings(
+        app=AppConfig(),
+        postgres=PostgresConfig(),
+        open_router=OpenRouterConfig(),
+    )
