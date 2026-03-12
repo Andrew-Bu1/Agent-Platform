@@ -182,7 +182,7 @@ class ServiceRouter:
     ) -> RerankResponse:
         config = await self._get_model(model_name)
 
-        if config.provider == "local":
+        if config.provider == "self-host":
             result = await self._local_rerank.rerank(config, query, documents, top_n)
         elif config.provider == "openrouter":
             raise HTTPException(status_code=501, detail="OpenRouter reranking not yet implemented")

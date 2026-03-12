@@ -8,7 +8,7 @@ Usage:
     # Or directly with python (if sentence-transformers is installed):
     python services/aihub/scripts/download_models.py
 
-    # Download only embedding models:
+    # Download only embedding models: 
     python scripts/download_models.py --embedding
 
     # Download only rerank models:
