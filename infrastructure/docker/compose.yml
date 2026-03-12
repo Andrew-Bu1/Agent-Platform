@@ -9,8 +9,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
 
@@ -22,20 +22,36 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: agent_studio
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
     container_name: agent-platform-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  aihub:
+    build:
+      context: ../..
+      dockerfile: services/aihub/Dockerfile
+    container_name: agent-platform-aihub
+    env_file:
+      - ../../services/aihub/.env
+    volumes:
+      - model-cache:/app/services/aihub/.models
+    depends_on:
+      - postgres
+    ports:
+      - "127.0.0.1:8000:8000"
 
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  model-cache:
