@@ -11,3 +11,9 @@ members = [
     "libs/python",
     "services/aihub",
 ]
+
+[dependency-groups]
+dev = [
+    "locust>=2.43.3",
+    "pydantic-settings>=2.13.1",
+]
