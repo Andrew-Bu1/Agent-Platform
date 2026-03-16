@@ -22,7 +22,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: agent_studio
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -32,8 +32,11 @@ services:
     container_name: agent-platform-redis
     volumes:
       - redis_data:/data
+      - ../../migrations/redis/users.acl:/usr/local/etc/redis/users.acl
     ports:
       - "127.0.0.1:6379:6379"
+    command:
+      redis-server --aclfile /usr/local/etc/redis/users.acl --appendonly yes
 
   aihub:
     build:
@@ -43,7 +46,7 @@ services:
     env_file:
       - ../../services/aihub/.env
     volumes:
-      - model-cache:/app/services/aihub/.models
+      - model_cache:/app/services/aihub/.models
     depends_on:
       - postgres
     ports:
@@ -54,4 +57,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
-  model-cache:
+  model_cache:
