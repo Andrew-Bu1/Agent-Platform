@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"libs/go/common/storage"
 	"log"
 	"net/http"
 
@@ -17,7 +18,6 @@ import (
 	"services/datahub/internal/queue"
 	"services/datahub/internal/repository"
 	"services/datahub/internal/service"
-	"services/datahub/internal/storage"
 
 	"github.com/joho/godotenv"
 	httpSwagger "github.com/swaggo/http-swagger"
