@@ -8,7 +8,7 @@ COPY go.work ./
 COPY . .
 
 # Download deps (cached unless go.mod/sum change)
-RUN go work sync && go work download
+RUN go work sync 
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build \
@@ -24,6 +24,6 @@ WORKDIR /app
 
 COPY --from=builder /datahub .
 
-EXPOSE 8080
+EXPOSE 8001
 
 ENTRYPOINT ["./datahub"]
