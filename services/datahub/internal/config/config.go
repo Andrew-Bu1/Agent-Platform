@@ -5,23 +5,13 @@ import (
 )
 
 type Config struct {
-	postgresConfig 	*config.PostgresConfig
-	minioConfig    	*config.MinioConfig
-	redisConfig   	*config.RedisConfig
+	Postgres 		*config.PostgresConfig
+	Minio    		*config.MinioConfig
+	Redis   		*config.RedisConfig
+	IngestionQueue 	string
 	Port           	int
 }
 
-func (c *Config) PostgresConfig() *config.PostgresConfig {
-	return c.postgresConfig
-}
-
-func (c *Config) MinioConfig() *config.MinioConfig {
-	return c.minioConfig
-}
-
-func (c *Config) RedisConfig() *config.RedisConfig {
-	return c.redisConfig
-}
 
 func Load() *Config {
 	postgresCfg := config.LoadPostgresConfig()
@@ -29,10 +19,13 @@ func Load() *Config {
 	redisCfg := config.LoadRedisConfig()
 
 	Port := config.GetEnvInt("PORT", 8080)
+	IngestionQueue := config.GetEnvString("REDIS_INGESTION_QUEUE", "")
+
 	return &Config {
-		postgresConfig: &postgresCfg,
-		minioConfig: 	&minioCfg,
-		redisConfig: 	&redisCfg,
-		Port: Port,
+		Postgres: 		postgresCfg,
+		Minio: 			minioCfg,
+		Redis: 			redisCfg,
+		IngestionQueue: IngestionQueue,
+		Port: 			Port,
 	}
 }

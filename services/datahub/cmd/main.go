@@ -1,7 +1,6 @@
 // @title           DataHub API
 // @version         1.0
 // @description     DataHub manages datasources, documents, ingestions, and chunks.
-// @host            localhost:8080
 // @BasePath        /
 
 package main
@@ -31,7 +30,7 @@ func main() {
 	cfg := config.Load()
 
 	ctx := context.Background()
-	pool, err := repository.NewPool(ctx, cfg.PostgresConfig())
+	pool, err := repository.NewPool(ctx, cfg.Postgres)
 	if err != nil {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
@@ -45,7 +44,7 @@ func main() {
 	chunkRepo := repository.NewChunkRepository(pool)
 
 	// MinIO storage
-	minioStorage, err := storage.NewMinioStorage(cfg.MinioConfig())
+	minioStorage, err := storage.NewMinioStorage(cfg.Minio)
 	if err != nil {
 		log.Fatalf("failed to connect to minio: %v", err)
 	}
@@ -55,7 +54,7 @@ func main() {
 	log.Println("connected to minio")
 
 	// Redis queue
-	redisQueue := queue.NewRedisQueue(cfg.RedisConfig())
+	redisQueue := queue.NewRedisQueue(cfg.Redis, cfg.IngestionQueue)
 	defer redisQueue.Close()
 	log.Println("redis queue ready")
 

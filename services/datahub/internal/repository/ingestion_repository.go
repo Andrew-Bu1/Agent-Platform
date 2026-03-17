@@ -20,13 +20,14 @@ func NewIngestionRepository(db *pgxpool.Pool) *IngestionRepository {
 
 func (r *IngestionRepository) Insert(ctx context.Context, i *model.Ingestion) error {
 	const q = `
-		INSERT INTO ingestion (id, document_id, chunk_strategy, embedding_model, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO ingestion (id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 	_, err := r.db.Exec(ctx, q,
 		i.ID,
 		i.DocumentID,
 		i.ChunkStrategy,
+		i.ChunkConfig,
 		i.EmbeddingModel,
 		i.Status,
 		i.CreatedAt,
@@ -40,7 +41,7 @@ func (r *IngestionRepository) Insert(ctx context.Context, i *model.Ingestion) er
 
 func (r *IngestionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Ingestion, error) {
 	const q = `
-		SELECT id, document_id, chunk_strategy, embedding_model, status, created_at, updated_at
+		SELECT id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
 		FROM ingestion
 		WHERE id = $1`
 
@@ -51,6 +52,7 @@ func (r *IngestionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model
 		&i.ID,
 		&i.DocumentID,
 		&i.ChunkStrategy,
+		&i.ChunkConfig,
 		&i.EmbeddingModel,
 		&i.Status,
 		&i.CreatedAt,
@@ -63,7 +65,7 @@ func (r *IngestionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model
 
 func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID uuid.UUID) ([]*model.Ingestion, error) {
 	const q = `
-		SELECT id, document_id, chunk_strategy, embedding_model, status, created_at, updated_at
+		SELECT id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
 		FROM ingestion
 		WHERE document_id = $1
 		ORDER BY created_at DESC`
@@ -81,6 +83,7 @@ func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID uu
 			&i.ID,
 			&i.DocumentID,
 			&i.ChunkStrategy,
+			&i.ChunkConfig,
 			&i.EmbeddingModel,
 			&i.Status,
 			&i.CreatedAt,

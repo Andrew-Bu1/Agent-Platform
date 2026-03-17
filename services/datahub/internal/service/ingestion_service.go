@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -37,8 +38,13 @@ func NewIngestionService(
 
 // Create saves a new ingestion with status "processing" and immediately
 // enqueues a ChunkJob so the data-worker starts chunking the document.
-func (s *IngestionService) Create(ctx context.Context, req model.CreateIngestionRequest) (*model.IngestionResponse, error) {
-	doc, err := s.documentRepo.GetByID(ctx, req.DocumentID)
+func (s *IngestionService) Create(
+	ctx context.Context, 
+	req model.CreateIngestionRequest, 
+	documentID uuid.UUID,
+	chunkConfig json.RawMessage,
+) (*model.IngestionResponse, error) {
+	doc, err := s.documentRepo.GetByID(ctx, documentID)
 	if err != nil {
 		return nil, fmt.Errorf("document not found: %w", err)
 	}
@@ -46,8 +52,9 @@ func (s *IngestionService) Create(ctx context.Context, req model.CreateIngestion
 	now := time.Now().UTC()
 	i := &model.Ingestion{
 		ID:             uuid.New(),
-		DocumentID:     req.DocumentID,
+		DocumentID:     documentID,
 		ChunkStrategy:  req.ChunkStrategy,
+		ChunkConfig: 	chunkConfig,
 		EmbeddingModel: req.EmbeddingModel,
 		Status:         IngestionStatusPending,
 		CreatedAt:      now,
@@ -63,6 +70,7 @@ func (s *IngestionService) Create(ctx context.Context, req model.CreateIngestion
 		DocumentID:     i.DocumentID,
 		StoragePath:    doc.StoragePath,
 		ChunkStrategy:  i.ChunkStrategy,
+		ChunkConfig:    i.ChunkConfig,
 		EmbeddingModel: i.EmbeddingModel,
 	}
 	if err := s.queue.Publish(ctx, job); err != nil {

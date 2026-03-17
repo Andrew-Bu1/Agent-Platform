@@ -55,8 +55,7 @@ func (h *IngestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	req.DocumentID = documentID
-
+	
 	if req.ChunkStrategy == "" {
 		writeError(w, http.StatusBadRequest, "chunk_strategy is required")
 		return
@@ -74,7 +73,19 @@ func (h *IngestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.Create(r.Context(), req)
+	if req.ChunkConfig == nil {
+		writeError(w, http.StatusBadRequest, "chunk_config is required")
+		return
+	} 
+
+	chunkConfig, err := json.Marshal(req.ChunkConfig)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid chunk_config")
+		return
+	}
+	
+
+	resp, err := h.svc.Create(r.Context(), req, documentID, chunkConfig)
 	if err != nil {
 		writeInternalError(w, "failed to create ingestion", err)
 		return

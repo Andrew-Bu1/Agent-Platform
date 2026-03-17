@@ -11,23 +11,25 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const ChunkQueueKey = "datahub:chunk"
-
 // ChunkJob is the payload pushed onto the queue.
 // The data-worker pops this and performs the actual chunking + embedding.
 type ChunkJob struct {
-	IngestionID    uuid.UUID `json:"ingestion_id"`
-	DocumentID     uuid.UUID `json:"document_id"`
-	StoragePath    string    `json:"storage_path"`
-	ChunkStrategy  string    `json:"chunk_strategy"`
-	EmbeddingModel string    `json:"embedding_model"`
+	IngestionID    uuid.UUID 		`json:"ingestion_id"`
+	DocumentID     uuid.UUID 		`json:"document_id"`
+	StoragePath    string    		`json:"storage_path"`
+	ChunkStrategy  string    		`json:"chunk_strategy"`
+	ChunkConfig    json.RawMessage 	`json:"chunk_config"`
+	EmbeddingModel string    		`json:"embedding_model"`
 }
+
+
 
 type RedisQueue struct {
-	client *redis.Client
+	client 			*redis.Client
+	IngestionQueue 	string
 }
 
-func NewRedisQueue(cfg *config.RedisConfig) *RedisQueue {
+func NewRedisQueue(cfg *config.RedisConfig, queueKey string) *RedisQueue {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	client := redis.NewClient(&redis.Options{
 		Addr:     addr,
@@ -35,7 +37,7 @@ func NewRedisQueue(cfg *config.RedisConfig) *RedisQueue {
 		Password: cfg.Password,
 		DB:       cfg.DB,
 	})
-	return &RedisQueue{client: client}
+	return &RedisQueue{client: client, IngestionQueue: queueKey}
 }
 
 // Publish pushes a ChunkJob as JSON onto the right end of the Redis list.
@@ -45,7 +47,7 @@ func (q *RedisQueue) Publish(ctx context.Context, job ChunkJob) error {
 	if err != nil {
 		return fmt.Errorf("queue.Publish marshal: %w", err)
 	}
-	if err := q.client.RPush(ctx, ChunkQueueKey, payload).Err(); err != nil {
+	if err := q.client.RPush(ctx, q.IngestionQueue, payload).Err(); err != nil {
 		return fmt.Errorf("queue.Publish rpush: %w", err)
 	}
 	return nil

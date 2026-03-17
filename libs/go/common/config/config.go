@@ -50,8 +50,8 @@ func GetEnvInt(key string, defaultValue int) int {
 	return value
 }
 
-func LoadRedisConfig() RedisConfig {
-	return RedisConfig{
+func LoadRedisConfig() *RedisConfig {
+	return &RedisConfig{
 		Host:     	GetEnvString("REDIS_HOST", "localhost"),
 		Port:     	GetEnvInt("REDIS_PORT", 6379),
 		User: 		GetEnvString("REDIS_USER", ""),
@@ -60,8 +60,8 @@ func LoadRedisConfig() RedisConfig {
 	}
 }
 
-func LoadPostgresConfig() PostgresConfig {
-	return PostgresConfig{
+func LoadPostgresConfig() *PostgresConfig {
+	return &PostgresConfig{
 		Host:     GetEnvString("POSTGRES_HOST", "localhost"),
 		Port:     GetEnvInt("POSTGRES_PORT", 5432),
 		User:     GetEnvString("POSTGRES_USER", "postgres"),
@@ -70,8 +70,8 @@ func LoadPostgresConfig() PostgresConfig {
 	}
 }
 
-func LoadMinioConfig() MinioConfig {
-	return MinioConfig{
+func LoadMinioConfig() *MinioConfig {
+	return &MinioConfig{
 		Endpoint:       	GetEnvString("MINIO_ENDPOINT", "localhost:9000"),
 		AccessKeyID:    	GetEnvString("MINIO_ACCESS_KEY_ID", "minioadmin"),
 		SecretAccessKey: 	GetEnvString("MINIO_SECRET_ACCESS_KEY", "minioadmin"),

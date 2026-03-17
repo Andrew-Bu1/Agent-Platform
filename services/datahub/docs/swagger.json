@@ -6,7 +6,6 @@
         "contact": {},
         "version": "1.0"
     },
-    "host": "localhost:8080",
     "basePath": "/",
     "paths": {
         "/chunks/{id}": {
@@ -442,6 +441,7 @@
                 }
             },
             "post": {
+                "description": "Creates an ingestion record with status \"processing\" and immediately enqueues a chunk job.",
                 "consumes": [
                     "application/json"
                 ],
@@ -451,7 +451,7 @@
                 "tags": [
                     "ingestions"
                 ],
-                "summary": "Create an ingestion",
+                "summary": "Create and trigger an ingestion",
                 "parameters": [
                     {
                         "type": "string",
@@ -471,8 +471,8 @@
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "202": {
+                        "description": "Accepted",
                         "schema": {
                             "$ref": "#/definitions/model.IngestionResponse"
                         }
@@ -813,10 +813,11 @@
         "model.CreateIngestionRequest": {
             "type": "object",
             "properties": {
-                "chunk_strategy": {
-                    "type": "string"
+                "chunk_config": {
+                    "type": "object",
+                    "additionalProperties": {}
                 },
-                "document_id": {
+                "chunk_strategy": {
                     "type": "string"
                 },
                 "embedding_model": {
@@ -873,6 +874,10 @@
         "model.IngestionResponse": {
             "type": "object",
             "properties": {
+                "chunk_config": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
                 "chunk_strategy": {
                     "type": "string"
                 },

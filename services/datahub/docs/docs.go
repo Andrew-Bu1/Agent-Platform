@@ -448,6 +448,7 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "description": "Creates an ingestion record with status \"processing\" and immediately enqueues a chunk job.",
                 "consumes": [
                     "application/json"
                 ],
@@ -457,7 +458,7 @@ const docTemplate = `{
                 "tags": [
                     "ingestions"
                 ],
-                "summary": "Create an ingestion",
+                "summary": "Create and trigger an ingestion",
                 "parameters": [
                     {
                         "type": "string",
@@ -477,8 +478,8 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "202": {
+                        "description": "Accepted",
                         "schema": {
                             "$ref": "#/definitions/model.IngestionResponse"
                         }
@@ -819,10 +820,11 @@ const docTemplate = `{
         "model.CreateIngestionRequest": {
             "type": "object",
             "properties": {
-                "chunk_strategy": {
-                    "type": "string"
+                "chunk_config": {
+                    "type": "object",
+                    "additionalProperties": {}
                 },
-                "document_id": {
+                "chunk_strategy": {
                     "type": "string"
                 },
                 "embedding_model": {
@@ -879,6 +881,10 @@ const docTemplate = `{
         "model.IngestionResponse": {
             "type": "object",
             "properties": {
+                "chunk_config": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
                 "chunk_strategy": {
                     "type": "string"
                 },
@@ -930,7 +936,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8080",
+	Host:             "",
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "DataHub API",
