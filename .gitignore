@@ -20,9 +20,6 @@ profile.cov
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-# Go workspace file
-go.work
-go.work.sum
 
 # env file
 .env
@@ -32,3 +29,25 @@ go.work.sum
 # .vscode/
 *.pyc
 .models/
+
+dev-tunnel.sh
+
+
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+
+# Maven wrapper (optional to keep or ignore)
+.mvn/wrapper/maven-wrapper.jar
+
+# Logs
+*.log
+
+# Spring Boot
+*.pid
+*.pid.lock
