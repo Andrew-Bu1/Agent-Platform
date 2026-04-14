@@ -20,7 +20,7 @@ func NewDocumentRepository(db *pgxpool.Pool) *DocumentRepository {
 
 func (r *DocumentRepository) Insert(ctx context.Context, d *model.Document) error {
 	const q = `
-		INSERT INTO document (id, datasource_id, name, file_hash, storage_path, metadata, created_at, updated_at)
+		INSERT INTO documents (id, datasource_id, name, file_hash, storage_path, metadata, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 	_, err := r.db.Exec(ctx, q,
@@ -42,7 +42,7 @@ func (r *DocumentRepository) Insert(ctx context.Context, d *model.Document) erro
 func (r *DocumentRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Document, error) {
 	const q = `
 		SELECT id, datasource_id, name, file_hash, storage_path, metadata, created_at, updated_at
-		FROM document
+		FROM documents
 		WHERE id = $1`
 
 	row := r.db.QueryRow(ctx, q, id)
@@ -66,7 +66,7 @@ func (r *DocumentRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.
 func (r *DocumentRepository) GetByDatasourceID(ctx context.Context, datasourceID uuid.UUID) ([]*model.Document, error) {
 	const q = `
 		SELECT id, datasource_id, name, file_hash, storage_path, metadata, created_at, updated_at
-		FROM document
+		FROM documents
 		WHERE datasource_id = $1
 		ORDER BY created_at DESC`
 
@@ -98,7 +98,7 @@ func (r *DocumentRepository) GetByDatasourceID(ctx context.Context, datasourceID
 
 func (r *DocumentRepository) Update(ctx context.Context, d *model.Document) error {
 	const q = `
-		UPDATE document
+		UPDATE documents
 		SET storage_path = $1, metadata = $2, updated_at = $3
 		WHERE id = $4`
 
@@ -117,7 +117,7 @@ func (r *DocumentRepository) Update(ctx context.Context, d *model.Document) erro
 func (r *DocumentRepository) FindByHash(ctx context.Context, datasourceID uuid.UUID, fileHash string) (*model.Document, error) {
 	const q = `
 		SELECT id, datasource_id, name, file_hash, storage_path, metadata, created_at, updated_at
-		FROM document
+		FROM documents
 		WHERE datasource_id = $1 AND file_hash = $2
 		LIMIT 1`
 
@@ -140,7 +140,7 @@ func (r *DocumentRepository) FindByHash(ctx context.Context, datasourceID uuid.U
 }
 
 func (r *DocumentRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	const q = `DELETE FROM document WHERE id = $1`
+	const q = `DELETE FROM documents WHERE id = $1`
 
 	_, err := r.db.Exec(ctx, q, id)
 	if err != nil {

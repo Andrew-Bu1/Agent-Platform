@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE TABLE IF NOT EXISTS datasource (
+CREATE TABLE datasources (
     id UUID PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(255),
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS datasource (
     updated_at TIMESTAMP NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS document (
+CREATE TABLE documents (
     id UUID PRIMARY KEY,
     datasource_id UUID NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -17,10 +17,10 @@ CREATE TABLE IF NOT EXISTS document (
     metadata JSONB,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
-    FOREIGN KEY (datasource_id) REFERENCES datasource(id) ON DELETE CASCADE
+    FOREIGN KEY (datasource_id) REFERENCES datasources(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS ingestion (
+CREATE TABLE ingestions (
     id UUID PRIMARY KEY,
     document_id UUID NOT NULL,
     chunk_strategy VARCHAR(255) NOT NULL,
@@ -29,10 +29,10 @@ CREATE TABLE IF NOT EXISTS ingestion (
     status VARCHAR(255) NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
-    FOREIGN KEY (document_id) REFERENCES document(id) ON DELETE CASCADE
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS chunk (
+CREATE TABLE chunks (
     id UUID PRIMARY KEY,
     ingestion_id UUID NOT NULL,
     chunk_index INT NOT NULL,
@@ -40,27 +40,38 @@ CREATE TABLE IF NOT EXISTS chunk (
     metadata JSONB,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
-    FOREIGN KEY (ingestion_id) REFERENCES ingestion(id) ON DELETE CASCADE
+    FOREIGN KEY (ingestion_id) REFERENCES ingestions(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS chunk_384dimension (
+CREATE TABLE chunk_384dimension (
     id UUID PRIMARY KEY,
     chunk_id UUID NOT NULL,
     datasource_id UUID NOT NULL,
     embedding vector(384) NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
-    FOREIGN KEY (chunk_id) REFERENCES chunk(id) ON DELETE CASCADE,
-    FOREIGN KEY (datasource_id) REFERENCES datasource(id) ON DELETE CASCADE
+    FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE,
+    FOREIGN KEY (datasource_id) REFERENCES datasources(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS chunk_768dimension (
+CREATE TABLE chunk_768dimension (
     id UUID PRIMARY KEY,
     chunk_id UUID NOT NULL,
     datasource_id UUID NOT NULL,
     embedding vector(768) NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
-    FOREIGN KEY (chunk_id) REFERENCES chunk(id) ON DELETE CASCADE,
-    FOREIGN KEY (datasource_id) REFERENCES datasource(id) ON DELETE CASCADE
+    FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE,
+    FOREIGN KEY (datasource_id) REFERENCES datasources(id) ON DELETE CASCADE
+);
+
+CREATE TABLE chunk_1024dimension (
+    id UUID PRIMARY KEY,
+    chunk_id UUID NOT NULL,
+    datasource_id UUID NOT NULL,
+    embedding vector(1024) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE,
+    FOREIGN KEY (datasource_id) REFERENCES datasources(id) ON DELETE CASCADE
 );

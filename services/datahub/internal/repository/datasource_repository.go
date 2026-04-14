@@ -20,7 +20,7 @@ func NewDatasourceRepository(db *pgxpool.Pool) *DatasourceRepository {
 
 func (r *DatasourceRepository) Insert(ctx context.Context, d *model.Datasource) error {
 	const q = `
-		INSERT INTO datasource (id, name, description, created_at, updated_at)
+		INSERT INTO datasources (id, name, description, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5)`
 
 	_, err := r.db.Exec(ctx, q,
@@ -39,7 +39,7 @@ func (r *DatasourceRepository) Insert(ctx context.Context, d *model.Datasource) 
 func (r *DatasourceRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Datasource, error) {
 	const q = `
 		SELECT id, name, description, created_at, updated_at
-		FROM datasource
+		FROM datasources
 		WHERE id = $1`
 
 	row := r.db.QueryRow(ctx, q, id)
@@ -60,7 +60,7 @@ func (r *DatasourceRepository) GetByID(ctx context.Context, id uuid.UUID) (*mode
 func (r *DatasourceRepository) GetAll(ctx context.Context) ([]*model.Datasource, error) {
 	const q = `
 		SELECT id, name, description, created_at, updated_at
-		FROM datasource
+		FROM datasources
 		ORDER BY created_at DESC`
 
 	rows, err := r.db.Query(ctx, q)
@@ -88,7 +88,7 @@ func (r *DatasourceRepository) GetAll(ctx context.Context) ([]*model.Datasource,
 
 func (r *DatasourceRepository) Update(ctx context.Context, d *model.Datasource) error {
 	const q = `
-		UPDATE datasource
+		UPDATE datasources
 		SET name = $1, description = $2, updated_at = $3
 		WHERE id = $4`
 
@@ -105,7 +105,7 @@ func (r *DatasourceRepository) Update(ctx context.Context, d *model.Datasource) 
 }
 
 func (r *DatasourceRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	const q = `DELETE FROM datasource WHERE id = $1`
+	const q = `DELETE FROM datasources WHERE id = $1`
 
 	_, err := r.db.Exec(ctx, q, id)
 	if err != nil {

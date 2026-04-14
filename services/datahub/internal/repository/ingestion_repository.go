@@ -20,7 +20,7 @@ func NewIngestionRepository(db *pgxpool.Pool) *IngestionRepository {
 
 func (r *IngestionRepository) Insert(ctx context.Context, i *model.Ingestion) error {
 	const q = `
-		INSERT INTO ingestion (id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at)
+		INSERT INTO ingestions (id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 	_, err := r.db.Exec(ctx, q,
@@ -42,7 +42,7 @@ func (r *IngestionRepository) Insert(ctx context.Context, i *model.Ingestion) er
 func (r *IngestionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Ingestion, error) {
 	const q = `
 		SELECT id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
-		FROM ingestion
+		FROM ingestions
 		WHERE id = $1`
 
 	row := r.db.QueryRow(ctx, q, id)
@@ -66,7 +66,7 @@ func (r *IngestionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model
 func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID uuid.UUID) ([]*model.Ingestion, error) {
 	const q = `
 		SELECT id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
-		FROM ingestion
+		FROM ingestions
 		WHERE document_id = $1
 		ORDER BY created_at DESC`
 
@@ -97,7 +97,7 @@ func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID uu
 }
 
 func (r *IngestionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	const q = `UPDATE ingestion SET status = $1 WHERE id = $2`
+	const q = `UPDATE ingestions SET status = $1 WHERE id = $2`
 
 	_, err := r.db.Exec(ctx, q, status, id)
 	if err != nil {
@@ -107,7 +107,7 @@ func (r *IngestionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, st
 }
 
 func (r *IngestionRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	const q = `DELETE FROM ingestion WHERE id = $1`
+	const q = `DELETE FROM ingestions WHERE id = $1`
 
 	_, err := r.db.Exec(ctx, q, id)
 	if err != nil {

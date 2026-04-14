@@ -21,7 +21,7 @@ func NewChunkRepository(db *pgxpool.Pool) *ChunkRepository {
 func (r *ChunkRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Chunk, error) {
 	const q = `
 		SELECT id, ingestion_id, chunk_index, content, metadata, created_at, updated_at
-		FROM chunk
+		FROM chunks
 		WHERE id = $1`
 
 	row := r.db.QueryRow(ctx, q, id)
@@ -44,7 +44,7 @@ func (r *ChunkRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Chu
 func (r *ChunkRepository) GetByIngestionID(ctx context.Context, ingestionID uuid.UUID) ([]*model.Chunk, error) {
 	const q = `
 		SELECT id, ingestion_id, chunk_index, content, metadata, created_at, updated_at
-		FROM chunk
+		FROM chunks
 		WHERE ingestion_id = $1
 		ORDER BY chunk_index ASC`
 
@@ -74,7 +74,7 @@ func (r *ChunkRepository) GetByIngestionID(ctx context.Context, ingestionID uuid
 }
 
 func (r *ChunkRepository) Delete(ctx context.Context, chunk *model.Chunk) error {
-	const q = `DELETE FROM chunk WHERE id = $1`
+	const q = `DELETE FROM chunks WHERE id = $1`
 
 	_, err := r.db.Exec(ctx, q, chunk.ID)
 	if err != nil {
