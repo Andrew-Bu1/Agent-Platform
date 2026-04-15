@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface AgentRepository extends JpaRepository<Agent, UUID> {
@@ -19,4 +20,7 @@ public interface AgentRepository extends JpaRepository<Agent, UUID> {
     Page<Agent> searchByTenantId(@Param("tenantId") UUID tenantId,
                                   @Param("search") String search,
                                   Pageable pageable);
+
+    @Query("SELECT a FROM Agent a LEFT JOIN FETCH a.tools WHERE a.id = :id")
+    Optional<Agent> findByIdWithTools(@Param("id") UUID id);
 }

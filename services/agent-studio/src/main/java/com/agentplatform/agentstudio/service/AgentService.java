@@ -78,23 +78,26 @@ public class AgentService {
         agentRepository.deleteById(id);
     }
 
+    @Transactional(readOnly = true)
     public List<ToolResponse> getAgentTools(UUID agentId) {
-        Agent agent = findOrThrow(agentId);
+        Agent agent = findOrThrowWithTools(agentId);
         return agent.getTools().stream().map(ToolResponse::from).toList();
     }
 
     @Transactional
     public void addTool(UUID agentId, UUID toolId) {
-        Agent agent = findOrThrow(agentId);
+        Agent agent = findOrThrowWithTools(agentId);
         Tool tool = toolRepository.findById(toolId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Tool not found"));
-        agent.getTools().add(tool);
+        if (!agent.getTools().add(tool)) {
+            throw new AppException(HttpStatus.CONFLICT, "Tool is already assigned to this agent");
+        }
         agentRepository.save(agent);
     }
 
     @Transactional
     public void removeTool(UUID agentId, UUID toolId) {
-        Agent agent = findOrThrow(agentId);
+        Agent agent = findOrThrowWithTools(agentId);
         boolean removed = agent.getTools().removeIf(t -> t.getId().equals(toolId));
         if (!removed) {
             throw new AppException(HttpStatus.NOT_FOUND, "Tool not assigned to this agent");
@@ -104,6 +107,11 @@ public class AgentService {
 
     private Agent findOrThrow(UUID id) {
         return agentRepository.findById(id)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Agent not found"));
+    }
+
+    private Agent findOrThrowWithTools(UUID id) {
+        return agentRepository.findByIdWithTools(id)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Agent not found"));
     }
 }
