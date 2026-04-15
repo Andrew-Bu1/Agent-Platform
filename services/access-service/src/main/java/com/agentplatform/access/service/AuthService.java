@@ -43,6 +43,7 @@ public class AuthService {
     private final UserSessionRepository userSessionRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final AuditLogService auditLogService;
 
     @Value("${app.jwt.refresh-token-expiry-days:30}")
     private long refreshTokenExpiryDays;
@@ -81,7 +82,10 @@ public class AuthService {
                 .build();
         membershipRepository.save(membership);
 
-        return createSession(user, tenant, "password", userAgent, ipAddress);
+        AuthResponse response = createSession(user, tenant, "password", userAgent, ipAddress);
+        auditLogService.log("user", user.getId().toString(), tenant.getId(),
+                "user:signup", "user", user.getId().toString());
+        return response;
     }
 
     @Transactional
@@ -94,6 +98,8 @@ public class AuthService {
         }
 
         if (user.getPasswordHash() == null || !passwordEncoder.matches(req.getPassword(), user.getPasswordHash())) {
+            auditLogService.log("user", req.getEmail(), null,
+                    "user:login", "user", user.getId().toString(), "deny", "Invalid password");
             throw new AppException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
 
@@ -108,7 +114,10 @@ public class AuthService {
         user.setLastLoginAt(OffsetDateTime.now());
         userRepository.save(user);
 
-        return createSession(user, tenant, "password", userAgent, ipAddress);
+        AuthResponse response = createSession(user, tenant, "password", userAgent, ipAddress);
+        auditLogService.log("user", user.getId().toString(), tenant.getId(),
+                "user:login", "user_session", null);
+        return response;
     }
 
     @Transactional
@@ -123,6 +132,8 @@ public class AuthService {
 
         session.setRevokedAt(OffsetDateTime.now());
         userSessionRepository.save(session);
+        auditLogService.log("user", session.getUser().getId().toString(), session.getTenant().getId(),
+                "user:logout", "user_session", session.getId().toString());
     }
 
     // ---- private helpers ----

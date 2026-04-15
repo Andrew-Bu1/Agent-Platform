@@ -4,6 +4,7 @@ import com.agentplatform.access.dto.CreatePermissionRequest;
 import com.agentplatform.access.dto.PermissionResponse;
 import com.agentplatform.access.entity.Permission;
 import com.agentplatform.access.repository.PermissionRepository;
+import com.agentplatform.access.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +20,7 @@ import java.util.UUID;
 public class PermissionService {
 
     private final PermissionRepository permissionRepository;
+    private final AuditLogService auditLogService;
 
     public Page<PermissionResponse> listPermissions(String search, Pageable pageable) {
         if (search == null || search.isBlank()) {
@@ -45,7 +47,9 @@ public class PermissionService {
                 .action(request.getAction())
                 .description(request.getDescription())
                 .build();
-        return PermissionResponse.from(permissionRepository.save(permission));
+        PermissionResponse result = PermissionResponse.from(permissionRepository.save(permission));
+        auditLogService.log("user", actorId(), null, "permission:create", "permission", result.getId().toString());
+        return result;
     }
 
     @Transactional
@@ -54,5 +58,14 @@ public class PermissionService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Permission not found");
         }
         permissionRepository.deleteById(id);
+        auditLogService.log("user", actorId(), null, "permission:delete", "permission", id.toString());
+    }
+
+    private String actorId() {
+        try {
+            return SecurityUtils.currentUserId().toString();
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 }

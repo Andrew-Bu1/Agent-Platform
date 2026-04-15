@@ -12,6 +12,7 @@ import com.agentplatform.access.exception.AppException;
 import com.agentplatform.access.repository.MembershipRepository;
 import com.agentplatform.access.repository.TenantRepository;
 import com.agentplatform.access.repository.UserRepository;
+import com.agentplatform.access.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +32,7 @@ public class TenantService {
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final MembershipRepository membershipRepository;
+    private final AuditLogService auditLogService;
 
     public Page<TenantResponse> listTenants(String search, Pageable pageable) {
         if (search == null || search.isBlank()) {
@@ -60,7 +62,9 @@ public class TenantService {
                 .status("active")
                 .planKey(req.getPlanKey() != null ? req.getPlanKey() : "basic")
                 .build();
-        return TenantResponse.from(tenantRepository.save(tenant));
+        Tenant saved = tenantRepository.save(tenant);
+        auditLogService.log("user", actorId(), saved.getId(), "tenant:create", "tenant", saved.getId().toString());
+        return TenantResponse.from(saved);
     }
 
     @Transactional
@@ -70,7 +74,9 @@ public class TenantService {
         if (req.getStatus() != null) tenant.setStatus(req.getStatus());
         if (req.getPlanKey() != null) tenant.setPlanKey(req.getPlanKey());
         if (req.getSettings() != null) tenant.setSettings(req.getSettings());
-        return TenantResponse.from(tenantRepository.save(tenant));
+        Tenant saved = tenantRepository.save(tenant);
+        auditLogService.log("user", actorId(), id, "tenant:update", "tenant", id.toString());
+        return TenantResponse.from(saved);
     }
 
     @Transactional
@@ -79,6 +85,7 @@ public class TenantService {
             throw new AppException(HttpStatus.NOT_FOUND, "Tenant not found");
         }
         tenantRepository.deleteById(id);
+        auditLogService.log("user", actorId(), id, "tenant:delete", "tenant", id.toString());
     }
 
     public List<MembershipResponse> getTenantMembers(UUID id) {
@@ -105,7 +112,9 @@ public class TenantService {
                 .status(req.getStatus())
                 .joinedAt(OffsetDateTime.now())
                 .build();
-        return MembershipResponse.from(membershipRepository.save(membership));
+        MembershipResponse result = MembershipResponse.from(membershipRepository.save(membership));
+        auditLogService.log("user", actorId(), tenantId, "membership:add", "membership", membership.getId().toString());
+        return result;
     }
 
     @Transactional
@@ -118,11 +127,20 @@ public class TenantService {
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Membership not found"));
 
         membershipRepository.delete(membership);
+        auditLogService.log("user", actorId(), tenantId, "membership:remove", "membership", membership.getId().toString());
     }
 
     private Tenant findOrThrow(UUID id) {
         return tenantRepository.findById(id)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Tenant not found"));
+    }
+
+    private String actorId() {
+        try {
+            return SecurityUtils.currentUserId().toString();
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 
     private String generateCode(String name) {

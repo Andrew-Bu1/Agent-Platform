@@ -4,6 +4,7 @@ import com.agentplatform.access.dto.*;
 import com.agentplatform.access.entity.*;
 import com.agentplatform.access.entity.MembershipRole.MembershipRoleId;
 import com.agentplatform.access.repository.*;
+import com.agentplatform.access.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,6 +25,7 @@ public class RoleService {
     private final PermissionRepository permissionRepository;
     private final MembershipRepository membershipRepository;
     private final MembershipRoleRepository membershipRoleRepository;
+    private final AuditLogService auditLogService;
 
     public Page<RoleResponse> listRoles(String search, Pageable pageable) {
         if (search == null || search.isBlank()) {
@@ -50,7 +52,9 @@ public class RoleService {
             .description(request.getDescription())
             .isSystem(request.getIsSystem() != null ? request.getIsSystem() : false)
             .build();
-        return RoleResponse.from(roleRepository.save(role));
+        RoleResponse result = RoleResponse.from(roleRepository.save(role));
+        auditLogService.log("user", actorId(), null, "role:create", "role", result.getId().toString());
+        return result;
     }
 
     @Transactional
@@ -66,7 +70,9 @@ public class RoleService {
         if (request.getDescription() != null) {
             role.setDescription(request.getDescription());
         }
-        return RoleResponse.from(roleRepository.save(role));
+        RoleResponse result = RoleResponse.from(roleRepository.save(role));
+        auditLogService.log("user", actorId(), null, "role:update", "role", id.toString());
+        return result;
     }
 
     @Transactional
@@ -75,6 +81,7 @@ public class RoleService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Role not found");
         }
         roleRepository.deleteById(id);
+        auditLogService.log("user", actorId(), null, "role:delete", "role", id.toString());
     }
 
     @Transactional
@@ -86,7 +93,9 @@ public class RoleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "One or more permission IDs not found");
         }
         role.getPermissions().addAll(permissions);
-        return RoleResponse.from(roleRepository.save(role));
+        RoleResponse result = RoleResponse.from(roleRepository.save(role));
+        auditLogService.log("user", actorId(), null, "role:assign_permissions", "role", roleId.toString());
+        return result;
     }
 
     @Transactional
@@ -94,7 +103,9 @@ public class RoleService {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Role not found"));
         role.getPermissions().removeIf(p -> p.getId().equals(permissionId));
-        return RoleResponse.from(roleRepository.save(role));
+        RoleResponse result = RoleResponse.from(roleRepository.save(role));
+        auditLogService.log("user", actorId(), null, "role:remove_permission", "role", roleId.toString());
+        return result;
     }
 
     @Transactional
@@ -121,6 +132,7 @@ public class RoleService {
                 .role(role)
                 .build();
         membershipRoleRepository.save(mr);
+        auditLogService.log("user", actorId(), null, "membership_role:assign", "membership_role", membershipId + ":" + roleId);
     }
 
     @Transactional
@@ -129,5 +141,14 @@ public class RoleService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Role assignment not found");
         }
         membershipRoleRepository.deleteByMembership_IdAndRole_Id(membershipId, roleId);
+        auditLogService.log("user", actorId(), null, "membership_role:remove", "membership_role", membershipId + ":" + roleId);
+    }
+
+    private String actorId() {
+        try {
+            return SecurityUtils.currentUserId().toString();
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 }

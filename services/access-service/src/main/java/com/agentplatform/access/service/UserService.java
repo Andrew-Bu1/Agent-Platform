@@ -8,6 +8,7 @@ import com.agentplatform.access.entity.User;
 import com.agentplatform.access.exception.AppException;
 import com.agentplatform.access.repository.MembershipRepository;
 import com.agentplatform.access.repository.UserRepository;
+import com.agentplatform.access.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +27,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final MembershipRepository membershipRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
 
     public Page<UserResponse> listUsers(String search, Pageable pageable) {
         if (search == null || search.isBlank()) {
@@ -44,7 +46,9 @@ public class UserService {
         if (req.getName() != null) user.setName(req.getName());
         if (req.getStatus() != null) user.setStatus(req.getStatus());
         if (req.getAvatarUrl() != null) user.setAvatarUrl(req.getAvatarUrl());
-        return UserResponse.from(userRepository.save(user));
+        UserResponse result = UserResponse.from(userRepository.save(user));
+        auditLogService.log("user", actorId(), null, "user:update", "user", id.toString());
+        return result;
     }
 
     @Transactional
@@ -52,10 +56,13 @@ public class UserService {
         User user = findOrThrow(id);
         if (user.getPasswordHash() == null ||
                 !passwordEncoder.matches(req.getCurrentPassword(), user.getPasswordHash())) {
+            auditLogService.log("user", id.toString(), null,
+                    "user:change_password", "user", id.toString(), "deny", "Incorrect current password");
             throw new AppException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
         }
         user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
         userRepository.save(user);
+        auditLogService.log("user", actorId(), null, "user:change_password", "user", id.toString());
     }
 
     @Transactional
@@ -64,6 +71,7 @@ public class UserService {
             throw new AppException(HttpStatus.NOT_FOUND, "User not found");
         }
         userRepository.deleteById(id);
+        auditLogService.log("user", actorId(), null, "user:delete", "user", id.toString());
     }
 
     public List<MembershipResponse> getUserMemberships(UUID id) {
@@ -76,5 +84,13 @@ public class UserService {
     private User findOrThrow(UUID id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "User not found"));
+    }
+
+    private String actorId() {
+        try {
+            return SecurityUtils.currentUserId().toString();
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 }
