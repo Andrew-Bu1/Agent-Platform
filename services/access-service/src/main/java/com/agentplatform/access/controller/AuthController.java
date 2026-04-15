@@ -4,6 +4,7 @@ import com.agentplatform.dto.ApiResponse;
 import com.agentplatform.access.dto.AuthResponse;
 import com.agentplatform.access.dto.LoginRequest;
 import com.agentplatform.access.dto.LogoutRequest;
+import com.agentplatform.access.dto.RefreshTokenRequest;
 import com.agentplatform.access.dto.SignupRequest;
 import com.agentplatform.access.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,6 +43,19 @@ public class AuthController {
             HttpServletRequest httpRequest
     ) {
         AuthResponse auth = authService.login(
+                req,
+                httpRequest.getHeader("User-Agent"),
+                httpRequest.getRemoteAddr()
+        );
+        return ResponseEntity.ok(ApiResponse.ok(auth));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<AuthResponse>> refresh(
+            @Valid @RequestBody RefreshTokenRequest req,
+            HttpServletRequest httpRequest
+    ) {
+        AuthResponse auth = authService.refresh(
                 req,
                 httpRequest.getHeader("User-Agent"),
                 httpRequest.getRemoteAddr()

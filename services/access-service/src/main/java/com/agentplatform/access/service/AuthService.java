@@ -3,6 +3,7 @@ package com.agentplatform.access.service;
 import com.agentplatform.access.dto.AuthResponse;
 import com.agentplatform.access.dto.LoginRequest;
 import com.agentplatform.access.dto.LogoutRequest;
+import com.agentplatform.access.dto.RefreshTokenRequest;
 import com.agentplatform.access.dto.SignupRequest;
 import com.agentplatform.access.entity.Membership;
 import com.agentplatform.access.entity.Tenant;
@@ -130,6 +131,33 @@ public class AuthService {
         AuthResponse response = createSession(user, tenant, "password", userAgent, ipAddress);
         auditLogService.log("user", user.getId().toString(), tenant.getId(),
                 "user:login", "user_session", null);
+        return response;
+    }
+
+    @Transactional
+    public AuthResponse refresh(RefreshTokenRequest req, String userAgent, String ipAddress) {
+        String hash = hashToken(req.getRefreshToken());
+        UserSession session = userSessionRepository.findByRefreshTokenHash(hash)
+                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Invalid or expired refresh token"));
+
+        if (session.getRevokedAt() != null) {
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Session has been revoked");
+        }
+
+        if (session.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Refresh token has expired");
+        }
+
+        // Rotate: revoke the old session and issue a new one
+        session.setRevokedAt(OffsetDateTime.now());
+        userSessionRepository.save(session);
+
+        User user = session.getUser();
+        Tenant tenant = session.getTenant();
+
+        AuthResponse response = createSession(user, tenant, session.getAuthMethod(), userAgent, ipAddress);
+        auditLogService.log("user", user.getId().toString(), tenant.getId(),
+                "user:token_refresh", "user_session", null);
         return response;
     }
 

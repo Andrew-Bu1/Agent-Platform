@@ -31,3 +31,8 @@ export interface SignupRequest {
 export interface LogoutRequest {
   refreshToken: string
 }
+
+// Mirrors com.agentplatform.access.dto.RefreshTokenRequest
+export interface RefreshTokenRequest {
+  refreshToken: string
+}

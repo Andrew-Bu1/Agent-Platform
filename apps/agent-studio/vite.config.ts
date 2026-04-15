@@ -16,6 +16,11 @@ export default defineConfig({
         target: 'http://localhost:8005',
         changeOrigin: true,
       },
+      '/studio/api/v1': {
+        target: 'http://localhost:8006',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/studio/, ''),
+      },
     },
   },
 })
