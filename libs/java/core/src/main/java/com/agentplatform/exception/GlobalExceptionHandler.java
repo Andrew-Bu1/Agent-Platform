@@ -1,6 +1,6 @@
-package com.agentplatform.access.exception;
+package com.agentplatform.exception;
 
-import com.agentplatform.access.dto.ApiResponse;
+import com.agentplatform.dto.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

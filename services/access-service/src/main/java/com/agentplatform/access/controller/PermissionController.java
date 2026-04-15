@@ -2,6 +2,7 @@ package com.agentplatform.access.controller;
 
 import com.agentplatform.access.dto.*;
 import com.agentplatform.access.service.PermissionService;
+import com.agentplatform.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;

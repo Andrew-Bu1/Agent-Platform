@@ -4,7 +4,7 @@ import com.agentplatform.access.dto.*;
 import com.agentplatform.access.entity.*;
 import com.agentplatform.access.entity.MembershipRole.MembershipRoleId;
 import com.agentplatform.access.repository.*;
-import com.agentplatform.access.security.SecurityUtils;
+import com.agentplatform.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

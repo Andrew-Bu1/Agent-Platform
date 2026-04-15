@@ -1,7 +1,7 @@
 package com.agentplatform.access.controller;
 
 import com.agentplatform.access.dto.ApiKeyResponse;
-import com.agentplatform.access.dto.ApiResponse;
+import com.agentplatform.dto.ApiResponse;
 import com.agentplatform.access.dto.CreateApiKeyRequest;
 import com.agentplatform.access.dto.UpdateApiKeyRequest;
 import com.agentplatform.access.dto.VerifyApiKeyRequest;

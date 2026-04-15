@@ -4,7 +4,7 @@ import com.agentplatform.access.dto.CreatePermissionRequest;
 import com.agentplatform.access.dto.PermissionResponse;
 import com.agentplatform.access.entity.Permission;
 import com.agentplatform.access.repository.PermissionRepository;
-import com.agentplatform.access.security.SecurityUtils;
+import com.agentplatform.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

@@ -1,6 +1,6 @@
 package com.agentplatform.access.controller;
 
-import com.agentplatform.access.dto.ApiResponse;
+import com.agentplatform.dto.ApiResponse;
 import com.agentplatform.access.dto.CreateModelEntitlementRequest;
 import com.agentplatform.access.dto.ModelEntitlementResponse;
 import com.agentplatform.access.dto.UpdateModelEntitlementRequest;

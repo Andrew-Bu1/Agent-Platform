@@ -1,6 +1,6 @@
 package com.agentplatform.access.controller;
 
-import com.agentplatform.access.dto.ApiResponse;
+import com.agentplatform.dto.ApiResponse;
 import com.agentplatform.access.dto.AuthResponse;
 import com.agentplatform.access.dto.LoginRequest;
 import com.agentplatform.access.dto.LogoutRequest;

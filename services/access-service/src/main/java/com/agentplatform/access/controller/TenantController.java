@@ -1,7 +1,7 @@
 package com.agentplatform.access.controller;
 
 import com.agentplatform.access.dto.AddMemberRequest;
-import com.agentplatform.access.dto.ApiResponse;
+import com.agentplatform.dto.ApiResponse;
 import com.agentplatform.access.dto.CreateTenantRequest;
 import com.agentplatform.access.dto.MembershipResponse;
 import com.agentplatform.access.dto.TenantResponse;

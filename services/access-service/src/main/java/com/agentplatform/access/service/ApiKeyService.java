@@ -10,7 +10,7 @@ import com.agentplatform.access.entity.User;
 import com.agentplatform.access.repository.ApiKeyRepository;
 import com.agentplatform.access.repository.TenantRepository;
 import com.agentplatform.access.repository.UserRepository;
-import com.agentplatform.access.security.SecurityUtils;
+import com.agentplatform.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

@@ -1,12 +1,12 @@
 package com.agentplatform.access.config;
 
+import com.agentplatform.security.JwtTokenProvider;
+import com.agentplatform.security.JwtUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -17,13 +17,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 @Configuration
@@ -36,25 +31,27 @@ public class SecurityConfig {
     @Value("${app.jwt.secret}")
     private String jwtSecret;
 
+    @Value("${app.jwt.access-token-expiry-seconds:900}")
+    private long accessTokenExpirySeconds;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
     @Bean
-    public SecretKey jwtSecretKey() {
-        byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
-        return new SecretKeySpec(keyBytes, "HmacSHA256");
+    public JwtDecoder jwtDecoder() {
+        return JwtUtils.buildDecoder(jwtSecret);
     }
 
     @Bean
-    public JwtDecoder jwtDecoder(SecretKey jwtSecretKey) {
-        return NimbusJwtDecoder.withSecretKey(jwtSecretKey).build();
+    public JwtEncoder jwtEncoder() {
+        return JwtUtils.buildEncoder(jwtSecret);
     }
 
     @Bean
-    public JwtEncoder jwtEncoder(SecretKey jwtSecretKey) {
-        return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSecretKey));
+    public JwtTokenProvider jwtTokenProvider(JwtEncoder jwtEncoder) {
+        return new JwtTokenProvider(jwtEncoder, accessTokenExpirySeconds);
     }
 
     @Bean

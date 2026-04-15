@@ -1,11 +1,11 @@
 package com.agentplatform.access.controller;
 
-import com.agentplatform.access.dto.ApiResponse;
+import com.agentplatform.dto.ApiResponse;
 import com.agentplatform.access.dto.ChangePasswordRequest;
 import com.agentplatform.access.dto.MembershipResponse;
 import com.agentplatform.access.dto.UpdateUserRequest;
 import com.agentplatform.access.dto.UserResponse;
-import com.agentplatform.access.security.SecurityUtils;
+import com.agentplatform.security.SecurityUtils;
 import com.agentplatform.access.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;

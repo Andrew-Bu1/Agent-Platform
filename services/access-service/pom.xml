@@ -27,6 +27,13 @@
   </dependencyManagement>
 
   <dependencies>
+    <!-- Shared core lib -->
+    <dependency>
+      <groupId>com.agentplatform</groupId>
+      <artifactId>core</artifactId>
+      <version>1.0-SNAPSHOT</version>
+    </dependency>
+
     <!-- Web -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

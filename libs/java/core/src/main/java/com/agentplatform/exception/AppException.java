@@ -1,4 +1,4 @@
-package com.agentplatform.access.exception;
+package com.agentplatform.exception;
 
 import org.springframework.http.HttpStatus;
 

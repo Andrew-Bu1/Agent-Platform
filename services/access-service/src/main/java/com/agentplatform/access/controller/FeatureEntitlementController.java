@@ -1,6 +1,6 @@
 package com.agentplatform.access.controller;
 
-import com.agentplatform.access.dto.ApiResponse;
+import com.agentplatform.dto.ApiResponse;
 import com.agentplatform.access.dto.CreateFeatureEntitlementRequest;
 import com.agentplatform.access.dto.FeatureEntitlementResponse;
 import com.agentplatform.access.dto.UpdateFeatureEntitlementRequest;
