@@ -21,6 +21,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -83,8 +85,19 @@ public class AuthService {
         membershipRepository.save(membership);
 
         AuthResponse response = createSession(user, tenant, "password", userAgent, ipAddress);
-        auditLogService.log("user", user.getId().toString(), tenant.getId(),
-                "user:signup", "user", user.getId().toString());
+
+        // Defer audit log until after this transaction commits so that the newly
+        // created tenant row is visible to the REQUIRES_NEW audit log transaction.
+        UUID userId = user.getId();
+        UUID tenantId = tenant.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                auditLogService.log("user", userId.toString(), tenantId,
+                        "user:signup", "user", userId.toString());
+            }
+        });
+
         return response;
     }
 
