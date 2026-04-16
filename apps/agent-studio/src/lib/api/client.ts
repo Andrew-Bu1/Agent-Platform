@@ -29,13 +29,20 @@ async function tryRefresh(): Promise<string | null> {
   const refreshToken = tokenStorage.getRefreshToken()
   if (!refreshToken) return null
 
-  // Lazy import to avoid circular dependency (auth.ts → client.ts → auth.ts).
-  const { authApi } = await import('./auth')
   try {
-    const res = await authApi.refresh({ refreshToken })
-    if (res.data) {
-      tokenStorage.save(res.data.accessToken, res.data.refreshToken)
-      return res.data.accessToken
+    // Use raw fetch — NOT authApi.refresh() — to avoid deadlock.
+    // At this point isRefreshing=true, so routing through request() would
+    // push the refresh call itself into refreshQueue and wait forever.
+    const res = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    })
+    if (!res.ok) return null
+    const body = await res.json() as ApiResponse<{ accessToken: string; refreshToken: string }>
+    if (body.data?.accessToken) {
+      tokenStorage.save(body.data.accessToken, body.data.refreshToken)
+      return body.data.accessToken
     }
     return null
   } catch {
@@ -103,8 +110,43 @@ async function request<T>(
   }
 }
 
-export function post<T>(path: string, payload: unknown, token?: string, baseUrl?: string): Promise<ApiResponse<T>> {
-  return request<T>(path, {
+/**
+ * Authenticated fetch with automatic 401 → token refresh → retry.
+ * Use this in API clients that don't go through the main `request()` helper
+ * (datahub, aihub, access) so they also benefit from token refresh.
+ *
+ * Returns the raw Response — callers handle JSON parsing themselves.
+ */
+export async function fetchWithAuth(url: string, init: RequestInit = {}): Promise<Response> {
+  const token = tokenStorage.getAccessToken()
+  const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+  const mergedHeaders = { ...(init.headers as Record<string, string> | undefined), ...authHeader }
+
+  const res = await fetch(url, { ...init, headers: mergedHeaders })
+  if (res.status !== 401) return res
+
+  // 401 — attempt token refresh
+  if (isRefreshing) {
+    const newToken = await new Promise<string | null>(resolve => refreshQueue.push(resolve))
+    if (!newToken) return res
+    return fetch(url, { ...init, headers: { ...mergedHeaders, Authorization: `Bearer ${newToken}` } })
+  }
+
+  isRefreshing = true
+  const newToken = await tryRefresh()
+  isRefreshing = false
+  notifyRefreshDone(newToken)
+
+  if (!newToken) {
+    tokenStorage.clear()
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
+    return res
+  }
+
+  return fetch(url, { ...init, headers: { ...mergedHeaders, Authorization: `Bearer ${newToken}` } })
+}
+
+export function post<T>(path: string, payload: unknown, token?: string, baseUrl?: string): Promise<ApiResponse<T>> {  return request<T>(path, {
     method: 'POST',
     body: JSON.stringify(payload),
     headers: token ? { Authorization: `Bearer ${token}` } : {},

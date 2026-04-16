@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   LogOut,
   Moon,
+  ShieldCheck,
   Sun,
   Wrench,
 } from 'lucide-react'
@@ -31,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Prompts', icon: FileText, to: '/dashboard/prompts' },
   { label: 'Models', icon: Brain, to: '/dashboard/models' },
   { label: 'Datasources', icon: Database, to: '/dashboard/datasources' },
+  { label: 'Identity', icon: ShieldCheck, to: '/dashboard/identity' },
 ]
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {

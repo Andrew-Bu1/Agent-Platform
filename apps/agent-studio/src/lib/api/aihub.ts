@@ -1,24 +1,18 @@
-import { tokenStorage } from './tokenStorage'
 import type { ModelConfig, ModelConfigCreate, ModelConfigUpdate } from './aihub-types'
-import { ApiError } from './client'
+import { ApiError, fetchWithAuth } from './client'
 
 // AIHub FastAPI returns plain objects (no ApiResponse wrapper).
 const BASE = '/aihub/v1'
-
-function tok() {
-  return tokenStorage.getAccessToken() ?? ''
-}
 
 async function aihubRequest<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetchWithAuth(`${BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${tok()}`,
-      ...options.headers,
+      ...(options.headers as Record<string, string> | undefined),
     },
   })
 
