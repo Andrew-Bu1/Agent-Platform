@@ -53,7 +53,7 @@ services:
       - "127.0.0.1:8000:8000"
   datahub:
     build:
-      context: ../..   
+      context: ../..
       dockerfile: services/datahub/Dockerfile
     container_name: agent-platform-datahub
     env_file:
@@ -64,6 +64,32 @@ services:
       - redis
     ports:
       - "127.0.0.1:8001:8001"
+
+  access-service:
+    build:
+      context: ../..
+      dockerfile: services/access-service/Dockerfile
+    container_name: agent-platform-access-service
+    env_file:
+      - ../../services/access-service/.env
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "127.0.0.1:8005:8005"
+
+  agent-studio:
+    build:
+      context: ../..
+      dockerfile: services/agent-studio/Dockerfile
+    container_name: agent-platform-agent-studio
+    env_file:
+      - ../../services/agent-studio/.env
+    depends_on:
+      - postgres
+      - access-service
+    ports:
+      - "127.0.0.1:8006:8006"
 
 volumes:
   postgres_data:
