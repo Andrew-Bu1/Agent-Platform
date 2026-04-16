@@ -5,6 +5,7 @@ import {
   Brain,
   ChevronLeft,
   ChevronRight,
+  Database,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Tools', icon: Wrench, to: '/dashboard/tools' },
   { label: 'Prompts', icon: FileText, to: '/dashboard/prompts' },
   { label: 'Models', icon: Brain, to: '/dashboard/models' },
+  { label: 'Datasources', icon: Database, to: '/dashboard/datasources' },
 ]
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
