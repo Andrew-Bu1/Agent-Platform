@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bot, ChevronDown, Filter, Pencil, Plus, Search, Trash2 } from 'lucide-react'
-import { agentsApi } from '@/lib/api/studio'
-import type { AgentResponse } from '@/lib/api/studio-types'
+import { Bot, ChevronDown, Filter, Pencil, Plus, Search, Trash2, Zap } from 'lucide-react'
+import { agentsApi, promptsApi } from '@/lib/api/studio'
+import type { AgentResponse, PromptVersionResponse } from '@/lib/api/studio-types'
 import { cn } from '@/lib/cn'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -137,13 +137,22 @@ function toMemoryConfig(f: MemoryConfigForm): Record<string, unknown> {
 
 // ---- Shared tab bar ----------------------------------------------------------
 
-const AGENT_TABS = ['Basic', 'Model Config', 'Memory'] as const
-type AgentTab = typeof AGENT_TABS[number]
+const CREATE_AGENT_TABS = ['Basic', 'Model Config', 'Memory'] as const
+type CreateAgentTab = typeof CREATE_AGENT_TABS[number]
 
-function AgentTabBar({ active, onChange }: { active: AgentTab; onChange: (t: AgentTab) => void }) {
+const EDIT_AGENT_TABS = ['Basic', 'Model Config', 'Memory', 'Prompts'] as const
+type EditAgentTab = typeof EDIT_AGENT_TABS[number]
+
+function AgentTabBar<T extends string>({
+  tabs, active, onChange,
+}: {
+  tabs: readonly T[]
+  active: T
+  onChange: (t: T) => void
+}) {
   return (
     <div className="-mx-6 mb-4 flex border-b border-gray-200 px-6 dark:border-border-dark">
-      {AGENT_TABS.map(t => (
+      {tabs.map(t => (
         <button
           key={t}
           type="button"
@@ -359,6 +368,220 @@ function MemoryConfigPanel({ config, onChange }: { config: MemoryConfigForm; onC
   )
 }
 
+// ---- Prompts panel -----------------------------------------------------------
+
+function PromptsPanel({ agentId }: { agentId: string }) {
+  const [versions, setVersions] = useState<PromptVersionResponse[]>([])
+  const [panelLoading, setPanelLoading] = useState(true)
+  const [panelError, setPanelError] = useState('')
+  const [showNew, setShowNew] = useState(false)
+  const [newPrompt, setNewPrompt] = useState('')
+  const [activateOnCreate, setActivateOnCreate] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [activatingId, setActivatingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  function loadVersions() {
+    setPanelLoading(true)
+    setPanelError('')
+    promptsApi.list(agentId)
+      .then(res => {
+        const sorted = (res.data ?? []).slice().sort((a, b) => b.version - a.version)
+        setVersions(sorted)
+        // auto-expand active version
+        const active = sorted.find(v => v.isActive)
+        if (active) setExpandedId(active.id)
+      })
+      .catch(() => setPanelError('Failed to load prompt versions.'))
+      .finally(() => setPanelLoading(false))
+  }
+
+  useEffect(() => { loadVersions() }, [agentId])
+
+  async function handleCreate() {
+    if (!newPrompt.trim()) return
+    setCreating(true)
+    try {
+      await promptsApi.create(agentId, { systemPrompt: newPrompt, activate: activateOnCreate })
+      setNewPrompt('')
+      setShowNew(false)
+      loadVersions()
+    } catch {
+      setPanelError('Failed to create prompt version.')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  async function handleActivate(id: string) {
+    setActivatingId(id)
+    try {
+      await promptsApi.activate(agentId, id)
+      loadVersions()
+    } catch {
+      setPanelError('Failed to activate prompt version.')
+    } finally {
+      setActivatingId(null)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id)
+    try {
+      await promptsApi.delete(agentId, id)
+      loadVersions()
+    } catch {
+      setPanelError('Failed to delete prompt version.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  if (panelLoading) {
+    return <div className="py-8 text-center text-sm text-gray-400">Loading prompts…</div>
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {versions.length} version{versions.length !== 1 ? 's' : ''}
+          {versions.find(v => v.isActive) && (
+            <span className="ml-2 font-medium text-green-600 dark:text-green-400">
+              · v{versions.find(v => v.isActive)!.version} active
+            </span>
+          )}
+        </p>
+        {!showNew && (
+          <Button size="sm" type="button" onClick={() => { setShowNew(true); setExpandedId(null) }}>
+            <Plus size={13} /> New Version
+          </Button>
+        )}
+      </div>
+
+      {panelError && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-400">
+          {panelError}
+        </p>
+      )}
+
+      {/* New version form */}
+      {showNew && (
+        <div className="rounded-xl border-2 border-dashed border-brand-300 bg-brand-50/40 p-4 dark:border-brand-700 dark:bg-brand-900/10">
+          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">New Prompt Version</p>
+          <Textarea
+            label="System Prompt"
+            placeholder="You are a helpful assistant…"
+            rows={5}
+            value={newPrompt}
+            onChange={e => setNewPrompt(e.target.value)}
+          />
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={activateOnCreate}
+              onChange={e => setActivateOnCreate(e.target.checked)}
+              className="rounded accent-brand-600"
+            />
+            Activate immediately
+          </label>
+          <div className="mt-3 flex gap-2">
+            <Button type="button" size="sm" loading={creating} onClick={handleCreate}>
+              Save Version
+            </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => { setShowNew(false); setNewPrompt('') }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Version list */}
+      {versions.length === 0 && !showNew ? (
+        <div className="rounded-xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400 dark:border-border-dark">
+          No prompt versions yet. Create the first one above.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {versions.map(v => {
+            const isExpanded = expandedId === v.id
+            return (
+              <div
+                key={v.id}
+                className={cn(
+                  'rounded-xl border transition-colors',
+                  v.isActive
+                    ? 'border-green-300 bg-green-50/60 dark:border-green-700 dark:bg-green-900/10'
+                    : 'border-gray-200 bg-white dark:border-border-dark dark:bg-card-dark',
+                )}
+              >
+                {/* Version header row */}
+                <div className="flex items-center gap-2 px-4 py-3">
+                  {v.isActive && (
+                    <Zap size={13} className="shrink-0 text-green-600 dark:text-green-400" />
+                  )}
+                  <span className="min-w-[3.5rem] font-mono text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    v{v.version}
+                  </span>
+                  {v.isActive ? (
+                    <Badge variant="green">Active</Badge>
+                  ) : (
+                    <Badge variant="gray">Draft</Badge>
+                  )}
+                  <span className="ml-auto text-xs text-gray-400">
+                    {new Date(v.createdAt).toLocaleDateString()}
+                  </span>
+                  {/* expand/collapse */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : v.id)}
+                    className="rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
+                  >
+                    {isExpanded ? 'Hide' : 'Show'}
+                  </button>
+                  {!v.isActive && (
+                    <button
+                      type="button"
+                      disabled={activatingId === v.id}
+                      onClick={() => handleActivate(v.id)}
+                      className="rounded px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 disabled:opacity-50 dark:text-brand-400 dark:hover:bg-brand-900/20"
+                    >
+                      {activatingId === v.id ? 'Activating…' : 'Activate'}
+                    </button>
+                  )}
+                  {!v.isActive && (
+                    <button
+                      type="button"
+                      disabled={deletingId === v.id}
+                      onClick={() => handleDelete(v.id)}
+                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50 dark:hover:bg-red-900/20"
+                      aria-label="Delete version"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+
+                {/* System prompt (expandable) */}
+                {isExpanded && (
+                  <div className="border-t border-gray-100 px-4 pb-4 pt-3 dark:border-border-dark">
+                    <p className="mb-1 text-xs font-semibold text-gray-400 dark:text-gray-500">System Prompt</p>
+                    <pre className="whitespace-pre-wrap rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-green-300">
+                      {v.systemPrompt}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---- Create Agent Modal ------------------------------------------------------
 
 function CreateAgentModal({
@@ -368,7 +591,7 @@ function CreateAgentModal({
   onClose: () => void
   onCreated: (agent: AgentResponse) => void
 }) {
-  const [tab, setTab] = useState<AgentTab>('Basic')
+  const [tab, setTab] = useState<CreateAgentTab>('Basic')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [modelConfig, setModelConfig] = useState<ModelConfigForm>(DEFAULT_MODEL_CONFIG)
@@ -407,7 +630,7 @@ function CreateAgentModal({
   return (
     <Modal open={open} onClose={() => { reset(); onClose() }} title="New Agent" size="lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <AgentTabBar active={tab} onChange={setTab} />
+        <AgentTabBar tabs={CREATE_AGENT_TABS} active={tab} onChange={setTab} />
         <div className="min-h-[18rem] overflow-y-auto">
           {tab === 'Basic' && (
             <div className="space-y-4">
@@ -456,7 +679,7 @@ function EditAgentModal({
   onClose: () => void
   onUpdated: (agent: AgentResponse) => void
 }) {
-  const [tab, setTab] = useState<AgentTab>('Basic')
+  const [tab, setTab] = useState<EditAgentTab>('Basic')
   const [name, setName] = useState(agent.name)
   const [description, setDescription] = useState(agent.description ?? '')
   const [isActive, setIsActive] = useState(agent.isActive)
@@ -488,7 +711,7 @@ function EditAgentModal({
   return (
     <Modal open onClose={onClose} title="Edit Agent" size="lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <AgentTabBar active={tab} onChange={setTab} />
+        <AgentTabBar tabs={EDIT_AGENT_TABS} active={tab} onChange={setTab} />
         <div className="min-h-[18rem] overflow-y-auto">
           {tab === 'Basic' && (
             <div className="space-y-4">
@@ -521,6 +744,9 @@ function EditAgentModal({
           )}
           {tab === 'Memory' && (
             <MemoryConfigPanel config={memoryConfig} onChange={setMemoryConfig} />
+          )}
+          {tab === 'Prompts' && (
+            <PromptsPanel agentId={agent.id} />
           )}
         </div>
         {error && name.trim() && (

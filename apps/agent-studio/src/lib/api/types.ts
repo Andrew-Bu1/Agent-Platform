@@ -11,6 +11,17 @@ export interface AuthResponse {
   refreshToken: string
   tokenType: string
   expiresIn: number // seconds
+  tenants?: TenantSummary[]
+}
+
+export interface TenantSummary {
+  id: string
+  name: string
+  code: string
+}
+
+export interface SwitchTenantRequest {
+  tenantId: string
 }
 
 // Mirrors com.agentplatform.access.dto.LoginRequest

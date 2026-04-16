@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   Bot,
   Brain,
@@ -11,7 +11,6 @@ import {
   Key,
   LayoutDashboard,
   Layers,
-  LogOut,
   Moon,
   ScrollText,
   ShieldCheck,
@@ -21,8 +20,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useTheme } from '@/context/ThemeContext'
-import { tokenStorage } from '@/lib/api/tokenStorage'
 import { AgentStudioLogo } from '@/components/layout/BrandBar'
+import { UserMenu } from '@/components/layout/UserMenu'
 
 interface NavItem {
   label: string
@@ -49,12 +48,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
-  const navigate = useNavigate()
-
-  function handleLogout() {
-    tokenStorage.clear()
-    navigate('/login')
-  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-surface-dark">
@@ -104,7 +97,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Bottom actions */}
-        <div className="border-t border-gray-100 p-2 dark:border-border-dark">
+        <div className="border-t border-gray-100 p-2 space-y-0.5 dark:border-border-dark">
           <button
             onClick={toggleTheme}
             title="Toggle theme"
@@ -116,17 +109,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             {!collapsed && 'Toggle theme'}
           </button>
-          <button
-            onClick={handleLogout}
-            title="Sign out"
-            className={cn(
-              'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-red-50 hover:text-red-600 dark:text-gray-400 dark:hover:bg-red-900/20 dark:hover:text-red-400',
-              collapsed && 'justify-center px-2',
-            )}
-          >
-            <LogOut size={18} />
-            {!collapsed && 'Sign out'}
-          </button>
+          <UserMenu collapsed={collapsed} />
         </div>
 
         {/* Collapse toggle */}

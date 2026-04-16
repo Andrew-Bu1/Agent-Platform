@@ -6,7 +6,9 @@ import com.agentplatform.access.dto.LoginRequest;
 import com.agentplatform.access.dto.LogoutRequest;
 import com.agentplatform.access.dto.RefreshTokenRequest;
 import com.agentplatform.access.dto.SignupRequest;
+import com.agentplatform.access.dto.SwitchTenantRequest;
 import com.agentplatform.access.service.AuthService;
+import com.agentplatform.security.SecurityUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -69,5 +73,17 @@ public class AuthController {
     ) {
         authService.logout(req);
         return ResponseEntity.ok(ApiResponse.ok("Logged out successfully"));
+    }
+
+    @PostMapping("/switch-tenant")
+    public ResponseEntity<ApiResponse<AuthResponse>> switchTenant(
+            @Valid @RequestBody SwitchTenantRequest req,
+            HttpServletRequest httpRequest
+    ) {
+        UUID userId = SecurityUtils.currentUserId();
+        AuthResponse auth = authService.switchTenant(userId, req,
+                httpRequest.getHeader("User-Agent"),
+                httpRequest.getRemoteAddr());
+        return ResponseEntity.ok(ApiResponse.ok(auth));
     }
 }

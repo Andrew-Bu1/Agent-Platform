@@ -212,3 +212,9 @@ export interface AuditLogResponse {
   metadata: string | null // JSON string
   createdAt: string
 }
+
+// ---- Auth ----
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
+}

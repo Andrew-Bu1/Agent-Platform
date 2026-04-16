@@ -1,5 +1,5 @@
 import { post } from './client'
-import type { AuthResponse, LoginRequest, LogoutRequest, RefreshTokenRequest, SignupRequest } from './types'
+import type { AuthResponse, LoginRequest, LogoutRequest, RefreshTokenRequest, SignupRequest, SwitchTenantRequest } from './types'
 
 export const authApi = {
   login(req: LoginRequest) {
@@ -16,5 +16,9 @@ export const authApi = {
 
   refresh(req: RefreshTokenRequest) {
     return post<AuthResponse>('/auth/refresh', req)
+  },
+
+  switchTenant(req: SwitchTenantRequest, accessToken: string) {
+    return post<AuthResponse>('/auth/switch-tenant', req, accessToken)
   },
 }

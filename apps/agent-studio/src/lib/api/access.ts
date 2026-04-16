@@ -5,6 +5,7 @@ import type {
   ApiKeyResponse,
   AssignPermissionsRequest,
   AuditLogResponse,
+  ChangePasswordRequest,
   CreateApiKeyRequest,
   CreateFeatureEntitlementRequest,
   CreateModelEntitlementRequest,
@@ -164,12 +165,20 @@ export const usersApi = {
     )
   },
 
+  getMe() {
+    return get<UserResponse>('/users/me', tokenStorage.getAccessToken() ?? '')
+  },
+
   getUser(id: string) {
     return get<UserResponse>(`/users/${id}`, tokenStorage.getAccessToken() ?? '')
   },
 
   update(id: string, body: UpdateUserRequest) {
     return put<UserResponse>(`/users/${id}`, body, tokenStorage.getAccessToken() ?? '')
+  },
+
+  changePassword(id: string, body: ChangePasswordRequest) {
+    return put<void>(`/users/${id}/password`, body, tokenStorage.getAccessToken() ?? '')
   },
 
   delete(id: string) {

@@ -5,6 +5,7 @@ import com.agentplatform.access.dto.LoginRequest;
 import com.agentplatform.access.dto.LogoutRequest;
 import com.agentplatform.access.dto.RefreshTokenRequest;
 import com.agentplatform.access.dto.SignupRequest;
+import com.agentplatform.access.dto.SwitchTenantRequest;
 import com.agentplatform.access.entity.Membership;
 import com.agentplatform.access.entity.Tenant;
 import com.agentplatform.access.entity.User;
@@ -158,6 +159,24 @@ public class AuthService {
         AuthResponse response = createSession(user, tenant, session.getAuthMethod(), userAgent, ipAddress);
         auditLogService.log("user", user.getId().toString(), tenant.getId(),
                 "user:token_refresh", "user_session", null);
+        return response;
+    }
+
+    @Transactional
+    public AuthResponse switchTenant(UUID userId, SwitchTenantRequest req, String userAgent, String ipAddress) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "User not found"));
+
+        Tenant tenant = tenantRepository.findById(req.getTenantId())
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Tenant not found"));
+
+        membershipRepository.findByUserAndTenant(user, tenant)
+                .filter(m -> "active".equals(m.getStatus()))
+                .orElseThrow(() -> new AppException(HttpStatus.FORBIDDEN, "No active membership for the requested tenant"));
+
+        AuthResponse response = createSession(user, tenant, "switch", userAgent, ipAddress);
+        auditLogService.log("user", userId.toString(), tenant.getId(),
+                "user:switch_tenant", "user_session", null);
         return response;
     }
 
