@@ -1,11 +1,19 @@
-import { fetchWithAuth } from './client'
+import { get, fetchWithAuth } from './client'
+import { tokenStorage } from './tokenStorage'
 import type {
   AssignPermissionsRequest,
+  CreateFeatureEntitlementRequest,
+  CreateModelEntitlementRequest,
   CreatePermissionRequest,
   CreateRoleRequest,
+  FeatureEntitlementResponse,
+  ModelEntitlementResponse,
   PermissionResponse,
   RoleResponse,
   SpringPage,
+  TenantResponse,
+  UpdateFeatureEntitlementRequest,
+  UpdateModelEntitlementRequest,
   UpdateRoleRequest,
 } from './access-types'
 
@@ -94,5 +102,74 @@ export const permissionsApi = {
 
   delete(id: string): Promise<void> {
     return fetchWithAuth(`${BASE}/permissions/${id}`, { method: 'DELETE' }).then(r => handleResponse<void>(r))
+  },
+}
+
+// ---- Tenants ----
+// TenantController wraps in ApiResponse<Page<TenantResponse>>, so use the main client.get()
+export const tenantsApi = {
+  list(search?: string, page = 0, size = 100) {
+    const q = new URLSearchParams({ page: String(page), size: String(size) })
+    if (search) q.set('search', search)
+    return get<{ content: TenantResponse[]; totalElements: number; totalPages: number; number: number; size: number }>(
+      `/tenants?${q}`,
+      tokenStorage.getAccessToken() ?? '',
+    )
+  },
+}
+
+// ---- Feature Entitlements ----
+export const featureEntitlementsApi = {
+  list(tenantId: string, page = 0, size = 100): Promise<SpringPage<FeatureEntitlementResponse>> {
+    const q = new URLSearchParams({ page: String(page), size: String(size) })
+    return fetchWithAuth(`${BASE}/tenants/${tenantId}/feature-entitlements?${q}`).then(r => handleResponse(r))
+  },
+
+  create(tenantId: string, body: CreateFeatureEntitlementRequest): Promise<FeatureEntitlementResponse> {
+    return fetchWithAuth(`${BASE}/tenants/${tenantId}/feature-entitlements`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }).then(r => handleResponse(r))
+  },
+
+  update(tenantId: string, id: string, body: UpdateFeatureEntitlementRequest): Promise<FeatureEntitlementResponse> {
+    return fetchWithAuth(`${BASE}/tenants/${tenantId}/feature-entitlements/${id}`, {
+      method: 'PUT',
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }).then(r => handleResponse(r))
+  },
+
+  delete(tenantId: string, id: string): Promise<void> {
+    return fetchWithAuth(`${BASE}/tenants/${tenantId}/feature-entitlements/${id}`, { method: 'DELETE' }).then(r => handleResponse(r))
+  },
+}
+
+// ---- Model Entitlements ----
+export const modelEntitlementsApi = {
+  list(tenantId: string, page = 0, size = 100): Promise<SpringPage<ModelEntitlementResponse>> {
+    const q = new URLSearchParams({ page: String(page), size: String(size) })
+    return fetchWithAuth(`${BASE}/tenants/${tenantId}/model-entitlements?${q}`).then(r => handleResponse(r))
+  },
+
+  create(tenantId: string, body: CreateModelEntitlementRequest): Promise<ModelEntitlementResponse> {
+    return fetchWithAuth(`${BASE}/tenants/${tenantId}/model-entitlements`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }).then(r => handleResponse(r))
+  },
+
+  update(tenantId: string, id: string, body: UpdateModelEntitlementRequest): Promise<ModelEntitlementResponse> {
+    return fetchWithAuth(`${BASE}/tenants/${tenantId}/model-entitlements/${id}`, {
+      method: 'PUT',
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }).then(r => handleResponse(r))
+  },
+
+  delete(tenantId: string, id: string): Promise<void> {
+    return fetchWithAuth(`${BASE}/tenants/${tenantId}/model-entitlements/${id}`, { method: 'DELETE' }).then(r => handleResponse(r))
   },
 }

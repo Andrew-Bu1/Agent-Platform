@@ -10,6 +10,7 @@ import { PromptsPage } from '@/pages/dashboard/PromptsPage'
 import { ModelsPage } from '@/pages/dashboard/ModelsPage'
 import { DatasourcePage } from '@/pages/dashboard/DatasourcePage'
 import IdentityPage from '@/pages/dashboard/IdentityPage'
+import EntitlementsPage from '@/pages/dashboard/EntitlementsPage'
 import { tokenStorage } from '@/lib/api/tokenStorage'
 import { AUTH_EXPIRED_EVENT } from '@/lib/api/client'
 
@@ -107,6 +108,16 @@ export function AppRouter() {
           <RequireAuth>
             <DashboardLayout>
               <IdentityPage />
+            </DashboardLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/dashboard/entitlements"
+        element={
+          <RequireAuth>
+            <DashboardLayout>
+              <EntitlementsPage />
             </DashboardLayout>
           </RequireAuth>
         }

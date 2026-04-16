@@ -8,6 +8,7 @@ import {
   Database,
   FileText,
   LayoutDashboard,
+  Layers,
   LogOut,
   Moon,
   ShieldCheck,
@@ -33,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Models', icon: Brain, to: '/dashboard/models' },
   { label: 'Datasources', icon: Database, to: '/dashboard/datasources' },
   { label: 'Identity', icon: ShieldCheck, to: '/dashboard/identity' },
+  { label: 'Entitlements', icon: Layers, to: '/dashboard/entitlements' },
 ]
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {

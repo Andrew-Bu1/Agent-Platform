@@ -49,3 +49,73 @@ export interface UpdateRoleRequest {
 export interface AssignPermissionsRequest {
   permissionIds: string[]
 }
+
+// ---- Tenant ----
+export interface TenantResponse {
+  id: string
+  code: string
+  name: string
+  status: string // 'active' | 'disabled'
+  planKey: string
+  settings: string | null // JSON string
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Feature Entitlement ----
+export interface FeatureEntitlementResponse {
+  id: string
+  tenantId: string
+  featureKey: string
+  enabled: boolean
+  config: string | null // JSON string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateFeatureEntitlementRequest {
+  featureKey: string
+  enabled?: boolean
+  config?: string // JSON string
+}
+
+export interface UpdateFeatureEntitlementRequest {
+  enabled?: boolean
+  config?: string // JSON string
+}
+
+// ---- Model Entitlement ----
+export interface ModelEntitlementResponse {
+  id: string
+  tenantId: string
+  modelKey: string
+  operationType: string // 'chat' | 'embedding' | 'rerank'
+  allowed: boolean
+  rpmLimit: number | null
+  tpmLimit: number | null
+  dailyTokenLimit: number | null
+  monthlyTokenLimit: number | null
+  config: string | null // JSON string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateModelEntitlementRequest {
+  modelKey: string
+  operationType: string
+  allowed?: boolean
+  rpmLimit?: number | null
+  tpmLimit?: number | null
+  dailyTokenLimit?: number | null
+  monthlyTokenLimit?: number | null
+  config?: string // JSON string
+}
+
+export interface UpdateModelEntitlementRequest {
+  allowed?: boolean
+  rpmLimit?: number | null
+  tpmLimit?: number | null
+  dailyTokenLimit?: number | null
+  monthlyTokenLimit?: number | null
+  config?: string // JSON string
+}
