@@ -1,12 +1,15 @@
-import { get, fetchWithAuth } from './client'
+import { get, post, put, del, fetchWithAuth } from './client'
 import { tokenStorage } from './tokenStorage'
 import type {
+  AddMemberRequest,
   AssignPermissionsRequest,
   CreateFeatureEntitlementRequest,
   CreateModelEntitlementRequest,
   CreatePermissionRequest,
   CreateRoleRequest,
+  CreateTenantRequest,
   FeatureEntitlementResponse,
+  MembershipResponse,
   ModelEntitlementResponse,
   PermissionResponse,
   RoleResponse,
@@ -15,6 +18,9 @@ import type {
   UpdateFeatureEntitlementRequest,
   UpdateModelEntitlementRequest,
   UpdateRoleRequest,
+  UpdateTenantRequest,
+  UpdateUserRequest,
+  UserResponse,
 } from './access-types'
 
 // The access-service roles/permissions controllers return raw Spring Page objects
@@ -106,7 +112,7 @@ export const permissionsApi = {
 }
 
 // ---- Tenants ----
-// TenantController wraps in ApiResponse<Page<TenantResponse>>, so use the main client.get()
+// TenantController wraps in ApiResponse<Page<TenantResponse>>, so use the main client helpers.
 export const tenantsApi = {
   list(search?: string, page = 0, size = 100) {
     const q = new URLSearchParams({ page: String(page), size: String(size) })
@@ -115,6 +121,59 @@ export const tenantsApi = {
       `/tenants?${q}`,
       tokenStorage.getAccessToken() ?? '',
     )
+  },
+
+  create(body: CreateTenantRequest) {
+    return post<TenantResponse>('/tenants', body, tokenStorage.getAccessToken() ?? '')
+  },
+
+  update(id: string, body: UpdateTenantRequest) {
+    return put<TenantResponse>(`/tenants/${id}`, body, tokenStorage.getAccessToken() ?? '')
+  },
+
+  delete(id: string) {
+    return del<void>(`/tenants/${id}`, tokenStorage.getAccessToken() ?? '')
+  },
+
+  getMembers(id: string) {
+    return get<MembershipResponse[]>(`/tenants/${id}/members`, tokenStorage.getAccessToken() ?? '')
+  },
+
+  addMember(id: string, body: AddMemberRequest) {
+    return post<MembershipResponse>(`/tenants/${id}/members`, body, tokenStorage.getAccessToken() ?? '')
+  },
+
+  removeMember(tenantId: string, userId: string) {
+    return del<void>(`/tenants/${tenantId}/members/${userId}`, tokenStorage.getAccessToken() ?? '')
+  },
+}
+
+// ---- Users ----
+// UserController wraps in ApiResponse<Page<UserResponse>>, so use the main client helpers.
+export const usersApi = {
+  list(search?: string, page = 0, size = 20) {
+    const q = new URLSearchParams({ page: String(page), size: String(size) })
+    if (search) q.set('search', search)
+    return get<{ content: UserResponse[]; totalElements: number; totalPages: number; number: number; size: number }>(
+      `/users?${q}`,
+      tokenStorage.getAccessToken() ?? '',
+    )
+  },
+
+  getUser(id: string) {
+    return get<UserResponse>(`/users/${id}`, tokenStorage.getAccessToken() ?? '')
+  },
+
+  update(id: string, body: UpdateUserRequest) {
+    return put<UserResponse>(`/users/${id}`, body, tokenStorage.getAccessToken() ?? '')
+  },
+
+  delete(id: string) {
+    return del<void>(`/users/${id}`, tokenStorage.getAccessToken() ?? '')
+  },
+
+  getMemberships(id: string) {
+    return get<MembershipResponse[]>(`/users/${id}/memberships`, tokenStorage.getAccessToken() ?? '')
   },
 }
 

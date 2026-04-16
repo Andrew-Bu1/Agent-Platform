@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Bot,
   Brain,
+  Building2,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -13,6 +14,7 @@ import {
   Moon,
   ShieldCheck,
   Sun,
+  Users,
   Wrench,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -35,6 +37,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Datasources', icon: Database, to: '/dashboard/datasources' },
   { label: 'Identity', icon: ShieldCheck, to: '/dashboard/identity' },
   { label: 'Entitlements', icon: Layers, to: '/dashboard/entitlements' },
+  { label: 'Tenants', icon: Building2, to: '/dashboard/tenants' },
+  { label: 'Users', icon: Users, to: '/dashboard/users' },
 ]
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {

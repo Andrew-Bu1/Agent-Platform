@@ -119,3 +119,54 @@ export interface UpdateModelEntitlementRequest {
   monthlyTokenLimit?: number | null
   config?: string // JSON string
 }
+
+// ---- User ----
+export interface UserResponse {
+  id: string
+  email: string
+  name: string | null
+  status: string // 'active' | 'disabled'
+  emailVerified: boolean | null
+  avatarUrl: string | null
+  lastLoginAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UpdateUserRequest {
+  name?: string
+  status?: string // 'active' | 'disabled'
+  avatarUrl?: string
+}
+
+// ---- Membership ----
+export interface MembershipResponse {
+  id: string
+  userId: string
+  userEmail: string
+  userName: string | null
+  tenantId: string
+  tenantName: string
+  status: string // 'active' | 'invited'
+  joinedAt: string | null
+  createdAt: string
+}
+
+export interface AddMemberRequest {
+  userId: string
+  status?: string // 'active' | 'invited'
+}
+
+// ---- Tenant (full CRUD types) ----
+export interface CreateTenantRequest {
+  name: string
+  code?: string
+  planKey?: string // 'basic' | 'pro' | 'enterprise'
+}
+
+export interface UpdateTenantRequest {
+  name?: string
+  status?: string // 'active' | 'disabled'
+  planKey?: string // 'basic' | 'pro' | 'enterprise'
+  settings?: string // JSON string
+}

@@ -11,6 +11,8 @@ import { ModelsPage } from '@/pages/dashboard/ModelsPage'
 import { DatasourcePage } from '@/pages/dashboard/DatasourcePage'
 import IdentityPage from '@/pages/dashboard/IdentityPage'
 import EntitlementsPage from '@/pages/dashboard/EntitlementsPage'
+import UsersPage from '@/pages/dashboard/UsersPage'
+import TenantsPage from '@/pages/dashboard/TenantsPage'
 import { tokenStorage } from '@/lib/api/tokenStorage'
 import { AUTH_EXPIRED_EVENT } from '@/lib/api/client'
 
@@ -118,6 +120,26 @@ export function AppRouter() {
           <RequireAuth>
             <DashboardLayout>
               <EntitlementsPage />
+            </DashboardLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/dashboard/tenants"
+        element={
+          <RequireAuth>
+            <DashboardLayout>
+              <TenantsPage />
+            </DashboardLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/dashboard/users"
+        element={
+          <RequireAuth>
+            <DashboardLayout>
+              <UsersPage />
             </DashboardLayout>
           </RequireAuth>
         }
