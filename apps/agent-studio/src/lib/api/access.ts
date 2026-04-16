@@ -2,7 +2,10 @@ import { get, post, put, del, fetchWithAuth } from './client'
 import { tokenStorage } from './tokenStorage'
 import type {
   AddMemberRequest,
+  ApiKeyResponse,
   AssignPermissionsRequest,
+  AuditLogResponse,
+  CreateApiKeyRequest,
   CreateFeatureEntitlementRequest,
   CreateModelEntitlementRequest,
   CreatePermissionRequest,
@@ -15,6 +18,7 @@ import type {
   RoleResponse,
   SpringPage,
   TenantResponse,
+  UpdateApiKeyRequest,
   UpdateFeatureEntitlementRequest,
   UpdateModelEntitlementRequest,
   UpdateRoleRequest,
@@ -230,5 +234,70 @@ export const modelEntitlementsApi = {
 
   delete(tenantId: string, id: string): Promise<void> {
     return fetchWithAuth(`${BASE}/tenants/${tenantId}/model-entitlements/${id}`, { method: 'DELETE' }).then(r => handleResponse(r))
+  },
+}
+
+// ---- API Keys ----
+// ApiKeyController returns raw Spring Page / raw objects — no ApiResponse wrapper.
+export const apiKeysApi = {
+  list(tenantId: string, search?: string, page = 0, size = 20): Promise<SpringPage<ApiKeyResponse>> {
+    const q = new URLSearchParams({ page: String(page), size: String(size) })
+    if (search) q.set('search', search)
+    return jsonFetch<SpringPage<ApiKeyResponse>>(`/tenants/${tenantId}/api-keys?${q}`)
+  },
+
+  get(id: string): Promise<ApiKeyResponse> {
+    return jsonFetch<ApiKeyResponse>(`/api-keys/${id}`)
+  },
+
+  create(tenantId: string, body: CreateApiKeyRequest): Promise<ApiKeyResponse> {
+    return jsonFetch<ApiKeyResponse>(`/tenants/${tenantId}/api-keys`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
+  update(id: string, body: UpdateApiKeyRequest): Promise<ApiKeyResponse> {
+    return jsonFetch<ApiKeyResponse>(`/api-keys/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+  },
+
+  revoke(id: string): Promise<void> {
+    return fetchWithAuth(`${BASE}/api-keys/${id}/revoke`, { method: 'POST' }).then(r => handleResponse(r))
+  },
+
+  delete(id: string): Promise<void> {
+    return fetchWithAuth(`${BASE}/api-keys/${id}`, { method: 'DELETE' }).then(r => handleResponse(r))
+  },
+}
+
+// ---- Audit Logs ----
+// AuditLogController returns raw Spring Page — no ApiResponse wrapper.
+export const auditLogsApi = {
+  list(params: {
+    tenantId?: string
+    actorId?: string
+    action?: string
+    resourceType?: string
+    decision?: string
+    page?: number
+    size?: number
+  } = {}): Promise<SpringPage<AuditLogResponse>> {
+    const q = new URLSearchParams({
+      page: String(params.page ?? 0),
+      size: String(params.size ?? 50),
+    })
+    if (params.tenantId) q.set('tenantId', params.tenantId)
+    if (params.actorId) q.set('actorId', params.actorId)
+    if (params.action) q.set('action', params.action)
+    if (params.resourceType) q.set('resourceType', params.resourceType)
+    if (params.decision) q.set('decision', params.decision)
+    return jsonFetch<SpringPage<AuditLogResponse>>(`/audit-logs?${q}`)
+  },
+
+  get(id: string): Promise<AuditLogResponse> {
+    return jsonFetch<AuditLogResponse>(`/audit-logs/${id}`)
   },
 }

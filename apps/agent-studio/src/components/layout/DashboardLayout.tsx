@@ -8,10 +8,12 @@ import {
   ChevronRight,
   Database,
   FileText,
+  Key,
   LayoutDashboard,
   Layers,
   LogOut,
   Moon,
+  ScrollText,
   ShieldCheck,
   Sun,
   Users,
@@ -39,6 +41,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Entitlements', icon: Layers, to: '/dashboard/entitlements' },
   { label: 'Tenants', icon: Building2, to: '/dashboard/tenants' },
   { label: 'Users', icon: Users, to: '/dashboard/users' },
+  { label: 'API Keys', icon: Key, to: '/dashboard/api-keys' },
+  { label: 'Audit Logs', icon: ScrollText, to: '/dashboard/audit-logs' },
 ]
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {

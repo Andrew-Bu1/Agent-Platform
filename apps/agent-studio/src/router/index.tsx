@@ -13,6 +13,8 @@ import IdentityPage from '@/pages/dashboard/IdentityPage'
 import EntitlementsPage from '@/pages/dashboard/EntitlementsPage'
 import UsersPage from '@/pages/dashboard/UsersPage'
 import TenantsPage from '@/pages/dashboard/TenantsPage'
+import ApiKeysPage from '@/pages/dashboard/ApiKeysPage'
+import AuditLogsPage from '@/pages/dashboard/AuditLogsPage'
 import { tokenStorage } from '@/lib/api/tokenStorage'
 import { AUTH_EXPIRED_EVENT } from '@/lib/api/client'
 
@@ -140,6 +142,26 @@ export function AppRouter() {
           <RequireAuth>
             <DashboardLayout>
               <UsersPage />
+            </DashboardLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/dashboard/api-keys"
+        element={
+          <RequireAuth>
+            <DashboardLayout>
+              <ApiKeysPage />
+            </DashboardLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/dashboard/audit-logs"
+        element={
+          <RequireAuth>
+            <DashboardLayout>
+              <AuditLogsPage />
             </DashboardLayout>
           </RequireAuth>
         }

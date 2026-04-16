@@ -170,3 +170,45 @@ export interface UpdateTenantRequest {
   planKey?: string // 'basic' | 'pro' | 'enterprise'
   settings?: string // JSON string
 }
+
+// ---- API Key ----
+export interface ApiKeyResponse {
+  id: string
+  tenantId: string
+  createdByUserId: string
+  name: string
+  keyPrefix: string | null
+  scopes: string | null // JSON array string e.g. '["agent:run"]'
+  status: string // 'active' | 'revoked'
+  expiresAt: string | null
+  lastUsedAt: string | null
+  createdAt: string
+  rawKey?: string // only present immediately after creation
+}
+
+export interface CreateApiKeyRequest {
+  name: string
+  scopes?: string // JSON array string
+  expiresAt?: string | null
+}
+
+export interface UpdateApiKeyRequest {
+  name?: string
+  scopes?: string // JSON array string
+  expiresAt?: string | null
+}
+
+// ---- Audit Log ----
+export interface AuditLogResponse {
+  id: string
+  actorType: string | null // 'user' | 'api_key' | 'system'
+  actorId: string | null
+  tenantId: string | null
+  action: string
+  resourceType: string | null
+  resourceId: string | null
+  decision: string | null // 'allow' | 'deny'
+  reason: string | null
+  metadata: string | null // JSON string
+  createdAt: string
+}
