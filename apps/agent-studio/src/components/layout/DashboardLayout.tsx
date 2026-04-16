@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Bot,
+  Brain,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -27,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Agents', icon: Bot, to: '/dashboard/agents' },
   { label: 'Tools', icon: Wrench, to: '/dashboard/tools' },
   { label: 'Prompts', icon: FileText, to: '/dashboard/prompts' },
+  { label: 'Models', icon: Brain, to: '/dashboard/models' },
 ]
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {

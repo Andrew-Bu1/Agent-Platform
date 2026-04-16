@@ -7,6 +7,7 @@ import { OverviewPage } from '@/pages/dashboard/OverviewPage'
 import { AgentsPage } from '@/pages/dashboard/AgentsPage'
 import { ToolsPage } from '@/pages/dashboard/ToolsPage'
 import { PromptsPage } from '@/pages/dashboard/PromptsPage'
+import { ModelsPage } from '@/pages/dashboard/ModelsPage'
 import { tokenStorage } from '@/lib/api/tokenStorage'
 import { AUTH_EXPIRED_EVENT } from '@/lib/api/client'
 
@@ -77,6 +78,17 @@ export function AppRouter() {
 
       {/* Redirect root */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+      <Route
+        path="/dashboard/models"
+        element={
+          <RequireAuth>
+            <DashboardLayout>
+              <ModelsPage />
+            </DashboardLayout>
+          </RequireAuth>
+        }
+      />
     </Routes>
   )
 }
