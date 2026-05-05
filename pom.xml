@@ -24,10 +24,5 @@
     <maven.compiler.source>${java.version}</maven.compiler.source>
     <maven.compiler.target>${java.version}</maven.compiler.target>
   </properties>
-  <modules>
-    <module>libs/java/core</module>
-    <module>services/agent-studio</module>
-    <module>services/access-service</module>
-  </modules>
 
 </project>
