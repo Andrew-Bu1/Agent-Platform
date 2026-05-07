@@ -4,4 +4,4 @@ CREATE DATABASE aihub;
 
 CREATE DATABASE datahub;
 
-CREATE DATABASE access_service; 
+CREATE DATABASE iam; 

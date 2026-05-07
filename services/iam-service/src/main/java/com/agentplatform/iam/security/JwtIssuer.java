@@ -65,6 +65,20 @@ public class JwtIssuer {
         return buildToken(minimalClaims, props.getRefreshTokenTtlSeconds(), "refresh");
     }
 
+    /**
+     * Issue a short-lived pre-authentication token (5 minutes) used during the
+     * tenant-selection step when a user belongs to multiple tenants.
+     * {@code token_type} is {@code "pre_auth"}.
+     *
+     * @param userId the authenticated user's UUID
+     * @return compact serialized JWT string
+     */
+    public String issuePreAuthToken(String userId) {
+        JwtClaims claims = new JwtClaims(userId, props.getIssuer() != null
+                ? java.util.List.of(props.getIssuer()) : java.util.List.of(), Map.of());
+        return buildToken(claims, 300L, "pre_auth");
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────────
 
     private String buildToken(JwtClaims claims, long ttlSeconds, String tokenType) {
