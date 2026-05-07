@@ -1,227 +1,432 @@
--- agents
--- tenant_id UUID of Finance BU
--- model_config JSONB to store model related config like model name, temperature, etc.
--- agent_type: standalone, tool, router, parallel, etc.
-CREATE TABLE agents (
-    id                 UUID PRIMARY KEY NOT NULL,
-    tenant_id          UUID            NOT NULL,
-    name               VARCHAR(255)    NOT NULL,
-    description        TEXT,
+-- AI Agent Platform - Minimal Studio + Runtime Schema
+-- Flow-version-centric, no agent_versions
+--
+-- IAM service owns:
+--   tenants, users, workspaces, memberships, roles, permissions,
+--   service clients, feature entitlements, model entitlements.
+--
+-- This database only stores references:
+--   tenant_id
+--   workspace_id
+--   user_id / created_by_user_id / updated_by_user_id
+--
+-- Core idea:
+--   agents = editable reusable library items
+--   tools = editable reusable library items
+--   flow_versions = immutable published runtime snapshot
 
-    model_config       JSONB           NOT NULL DEFAULT '{}',
-    memory_config       JSONB           NOT NULL DEFAULT '{}',
+-- 1. AGENTS
+--
+-- Stores both:
+--   single = default ReAct-capable agent
+--   team   = hierarchical supervisor-worker agent team
+--
+-- No agent_versions table.
+-- The latest editable agent/team config lives in definition_json.
+-- When publishing a flow, copy/snapshot the needed agent config
+-- into flow_versions.graph_json.
 
-    is_active          BOOLEAN         NOT NULL DEFAULT true,
+CREATE TABLE IF NOT EXISTS agents (
+    id UUID PRIMARY KEY NOT NULL,
+
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+
+    name VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+
+    agent_kind VARCHAR(50) NOT NULL DEFAULT 'single',
+    -- single, team
+
+    definition_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    -- draft, active, archived
+
     created_by_user_id UUID NOT NULL,
     updated_by_user_id UUID NOT NULL,
-    created_at         TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
-    updated_at         TIMESTAMPTZ       NOT NULL DEFAULT NOW()
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_agents_workspace_name
+        UNIQUE (workspace_id, name)
 );
 
--- tools
--- type 'api' for external API calls, 'function' for internal functions, etc.
--- config JSONB to store tool specific config like API endpoint, method, headers for API tools or function name and parameters for function tools.
--- {
---   "base_url": "https://customer-service.internal",
---   "path": "/customers/{customer_id}",
---   "method": "GET",
---   "headers_template": {
---     "Authorization": "Bearer {{secret_ref}}"
---   },
---   "query_template": {},
---   "body_template": {},
---   "auth_type": "bearer",
---   "credential": "asdflkjasdlkfjalsd" -- First just store pure credential, in the future we can enhance to support referencing secrets in secret manager, e.g. "credential": {"secret_ref": "customer-service-api-token"}
--- }
-CREATE TABLE tools (
-    id              UUID PRIMARY KEY NOT NULL,
-    tenant_id       UUID            NOT NULL,
-    name            VARCHAR(255)    NOT NULL,
-
-    type            VARCHAR(50)     NOT NULL,
-
-    description     TEXT,
-
-    require_approval BOOLEAN NOT NULL DEFAULT false,
-    input_schema    JSONB           NOT NULL DEFAULT '{}',
-    output_schema   JSONB           NOT NULL DEFAULT '{}',
-    config          JSONB           NOT NULL DEFAULT '{}',
-
-    is_active       BOOLEAN         NOT NULL DEFAULT true,
-    created_by_user_id UUID         NOT NULL,
-    updated_by_user_id UUID         NOT NULL,
-    created_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW()
-);
-
--- agent_tools
--- Many-to-many relationship between agents and tools, as an agent can use multiple tools and a tool can be used by multiple agents.
-CREATE TABLE agent_tools (
-    agent_id        UUID            NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    tool_id         UUID            NOT NULL REFERENCES tools(id)  ON DELETE CASCADE,
-    PRIMARY KEY (agent_id, tool_id),
-    CONSTRAINT fk_agent_tools_agent FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
-    CONSTRAINT fk_agent_tools_tool FOREIGN KEY (tool_id) REFERENCES tools(id) ON DELETE CASCADE
-);
-
--- prompt_versions
--- versioning for prompts, as prompts can evolve over time. Only one active version per agent is allowed.
--- context_config JSONB to store additional context related to the prompt, such as TIMESTAMPTZs, user information, or any other relevant data that can help in generating responses.
-CREATE TABLE prompt_versions (
-    id              UUID PRIMARY KEY NOT NULL,
-    agent_id        UUID            NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    version         INT             NOT NULL,
-    system_prompt   TEXT            NOT NULL,
-    context_config  JSONB           NOT NULL DEFAULT '{}',
-    is_active       BOOLEAN         NOT NULL DEFAULT false,
-    created_by_user_id UUID         NOT NULL,
-    created_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT fk_prompt_versions_agent FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
-    CONSTRAINT uq_prompt_versions_agent_version UNIQUE (agent_id, version)
-);
-
-CREATE UNIQUE INDEX idx_prompt_versions_one_active
-    ON prompt_versions (agent_id)
-    WHERE is_active = true;
 
 
--- workflows
-CREATE TABLE workflows (
-    id              UUID PRIMARY KEY NOT NULL,
-    tenant_id       UUID            NOT NULL,
-    name            VARCHAR(255)    NOT NULL,
-    description     TEXT,
+-- 2. TOOLS
+--
+-- Tool definitions available to:
+--   - agents internally
+--   - agent teams internally
+--
 
-    is_active       BOOLEAN         NOT NULL DEFAULT false,
-    created_by_user_id UUID         NOT NULL,
-    updated_by_user_id UUID         NOT NULL,
-    created_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW()
-);
-
--- workflow_versions
--- graph = {"nodes": [{"id": "node1", "type": "tool", "tool_id": "tool-uuid", "config": {...}}, ...], "edges": [{"from": "node1", "to": "node2"}, ...]}
--- settings = {"retry_on_failure": true, "max_retries": 3, "timeout": 60}
-CREATE TABLE workflow_versions (
+CREATE TABLE IF NOT EXISTS tools (
     id UUID PRIMARY KEY NOT NULL,
-    workflow_id     UUID NOT NULL,
+
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+
+    name VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+
+    tool_type VARCHAR(50) NOT NULL,
+    -- http, function, database, webhook, email, internal_service
+
+    input_schema JSONB NOT NULL DEFAULT '{}'::jsonb,
+    output_schema JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    approval_policy_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    -- active, disabled, archived
+
+    created_by_user_id UUID NOT NULL,
+    updated_by_user_id UUID NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_tools_tool_type
+        CHECK (tool_type IN (
+            'http',
+            'function',
+            'database',
+            'webhook',
+            'email',
+            'internal_service'
+        )),
+
+    CONSTRAINT chk_tools_status
+        CHECK (status IN ('active', 'disabled', 'archived')),
+
+    CONSTRAINT uq_tools_workspace_name
+        UNIQUE (workspace_id, name)
+);
+
+
+-- 3. FLOWS
+--
+-- The low-code canvas project.
+-- Mutable/editable metadata only.
+-- Actual executable snapshots are in flow_versions.
+
+CREATE TABLE IF NOT EXISTS flows (
+    id UUID PRIMARY KEY NOT NULL,
+
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+
+    name VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    -- draft, active, archived
+
+    current_version_id UUID NULL,
+
+    created_by_user_id UUID NOT NULL,
+    updated_by_user_id UUID NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_flows_status
+        CHECK (status IN ('draft', 'active', 'archived')),
+
+    CONSTRAINT uq_flows_workspace_name
+        UNIQUE (workspace_id, name)
+);
+
+
+-- 4. FLOW VERSIONS
+--
+-- Immutable executable snapshot.
+--
+-- graph_json stores:
+--   entry_node_id
+--   nodes
+--   edges
+--   UI metadata
+--   agent snapshots
+--   agent team snapshots
+--   tool snapshots
+--   human review config
+--
+-- Supported canvas node types:
+--   start
+--   end
+--   agent
+--   agent_team
+--   if_else
+--   router
+--   parallel
+--   aggregator
+--   human_review
+
+
+CREATE TABLE IF NOT EXISTS flow_versions (
+    id UUID PRIMARY KEY NOT NULL,
+
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+
+    flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+
     version INT NOT NULL,
-    graph JSONB NOT NULL,
-    settings JSONB NOT NULL DEFAULT '{}',
-    is_active BOOLEAN NOT NULL DEFAULT false,
+
+    graph_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    settings_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    -- draft, published, archived
+
     created_by_user_id UUID NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT fk_workflow_versions_workflow FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE,
-    CONSTRAINT uq_workflow_versions_workflow_version UNIQUE (workflow_id, version)
+    CONSTRAINT chk_flow_versions_status
+        CHECK (status IN ('draft', 'published', 'archived')),
+
+    CONSTRAINT uq_flow_versions_flow_version
+        UNIQUE (flow_id, version)
 );
 
 
-CREATE UNIQUE INDEX uq_workflow_versions_one_active
-    ON workflow_versions (workflow_id)
-    WHERE is_active = true;
 
--- sessions
--- Notes:
--- - session is tied to an agent or an workflow run, if session is tied to an agent, it means the session is for a standalone agent, if session is tied to a workflow run, it means the session is for a workflow execution which may involve multiple agents.
-CREATE TABLE sessions (
-    id              UUID PRIMARY KEY NOT NULL,
-    tenant_id       UUID NOT NULL,
-    agent_id        UUID,
-    session_type VARCHAR(50) NOT NULL DEFAULT 'workflow', -- 'standalone' or 'workflow'
-    created_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_sessions_agent FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE SET NULL
+
+-- 5. THREADS
+--
+-- Conversation/session boundary.
+-- A thread can contain multiple runs.
+
+CREATE TABLE IF NOT EXISTS threads (
+    id UUID PRIMARY KEY NOT NULL,
+
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+
+    user_id UUID NULL,
+
+    title VARCHAR(255) NULL,
+    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- workflow_runs
--- Record of one workflow execution
-CREATE TABLE workflow_runs (
-    id              UUID PRIMARY KEY NOT NULL,
-    tenant_id      UUID            NOT NULL,
-    workflow_id     UUID            NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    workflow_version_id UUID        NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE,
 
-    session_id      UUID            REFERENCES sessions(id) ON DELETE SET NULL,
-    input           JSONB           NOT NULL DEFAULT '{}',
-    output          JSONB,
-    status          VARCHAR(50)     NOT NULL DEFAULT 'pending',
-    error           TEXT,
 
-    elapsed_time    INT,
+-- 6. RUNS
+--
+-- One execution of one published flow version.
 
-    started_at      TIMESTAMPTZ,
-    finished_at     TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS runs (
+    id UUID PRIMARY KEY NOT NULL,
+
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+
+    thread_id UUID NULL REFERENCES threads(id) ON DELETE SET NULL,
+
+    flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE RESTRICT,
+    flow_version_id UUID NOT NULL REFERENCES flow_versions(id) ON DELETE RESTRICT,
+
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    -- pending, running, waiting_for_human, waiting_for_event,
+    -- completed, failed, cancelled, rejected, human_takeover
+
+    input_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    state_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    output_json JSONB NULL,
+    error_json JSONB NULL,
+
+    started_at TIMESTAMPTZ NULL,
+    finished_at TIMESTAMPTZ NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- node_executions
--- Record of each node execution within a workflow run.
--- Example
--- node_id = "node1"
--- node_type = "agent"
--- input = {"message": "Hello, how can I help you?"}
 
 
-CREATE TABLE node_executions (
-    id              UUID PRIMARY KEY NOT NULL,
-    workflow_run_id    UUID            NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+-- 7. NODE RUNS
+--
+-- One execution of one canvas node inside a run.
 
-    node_id         VARCHAR(255)    NOT NULL,
-    node_name       VARCHAR(255)    NOT NULL,
-    node_type       VARCHAR(50)     NOT NULL,
+CREATE TABLE IF NOT EXISTS node_runs (
+    id UUID PRIMARY KEY NOT NULL,
 
-    agent_id        UUID REFERENCES agents(id) ON DELETE SET NULL,
-    session_id      UUID            REFERENCES sessions(id) ON DELETE SET NULL,
-    iteration       INT             NOT NULL DEFAULT 1,
-    approval_status VARCHAR(50)     NOT NULL DEFAULT 'not_required', -- not_required, pending, approved, rejected
-    parallel_id      UUID,
-    attempt_no         INT             NOT NULL DEFAULT 1,
-    branch_key      VARCHAR(255)    NOT NULL DEFAULT 'main',
-    input           JSONB           NOT NULL DEFAULT '{}',
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
 
-    output          JSONB,
-    status          VARCHAR(50)     NOT NULL DEFAULT 'pending',
+    run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
 
-    error           TEXT,
+    node_id VARCHAR(255) NOT NULL,
+    node_type VARCHAR(50) NOT NULL,
+    -- start, end, agent, agent_team, if_else, router, parallel, aggregator,
+    -- human_review
+    node_name VARCHAR(255) NOT NULL,
 
-    started_at      TIMESTAMPTZ,
-    finished_at     TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    -- pending, running, waiting, completed, failed, skipped
 
-    CONSTRAINT uq_node_execution_identity
-    UNIQUE (workflow_run_id, node_id, branch_key, iteration, attempt_no)
+    branch_key VARCHAR(255) NOT NULL DEFAULT 'main',
+    iteration INT NOT NULL DEFAULT 1,
+    attempt_no INT NOT NULL DEFAULT 1,
+
+    input_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    output_json JSONB NULL,
+    error_json JSONB NULL,
+
+    started_at TIMESTAMPTZ NULL,
+    finished_at TIMESTAMPTZ NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+
+    CONSTRAINT chk_node_runs_status
+        CHECK (status IN (
+            'pending',
+            'running',
+            'waiting',
+            'completed',
+            'failed',
+            'skipped'
+        )),
+
+    CONSTRAINT uq_node_runs_identity
+        UNIQUE (run_id, node_id, branch_key, iteration, attempt_no)
 );
 
--- messages
--- role: user, assistant, system, tool, etc.
-CREATE TABLE messages (
-    id              UUID PRIMARY KEY NOT NULL,
-    tenant_id       UUID            NOT NULL,
-    session_id      UUID            NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    node_execution_id UUID        REFERENCES node_executions(id) ON DELETE SET NULL,
-    role            VARCHAR(50)     NOT NULL,
 
-    content         JSONB            NOT NULL,
 
-    metadata        JSONB           NOT NULL DEFAULT '{}',
 
-    created_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW()
+-- 8. MESSAGES
+--
+-- Conversation messages.
+-- These are not the same as run_events.
+--
+-- Use messages for:
+--   user messages
+--   assistant messages
+--   visible tool messages if needed
+--
+-- Use run_events for:
+--   execution timeline
+--   debugging
+--   audit
+--   streaming
+
+CREATE TABLE IF NOT EXISTS messages (
+    id UUID PRIMARY KEY NOT NULL,
+
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+
+    thread_id UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    run_id UUID NULL REFERENCES runs(id) ON DELETE SET NULL,
+    node_run_id UUID NULL REFERENCES node_runs(id) ON DELETE SET NULL,
+
+    role VARCHAR(50) NOT NULL,
+    -- user, assistant, system, tool
+
+    content_json JSONB NOT NULL,
+    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
 );
 
-CREATE INDEX idx_node_executions_workflow_run_id
-    ON node_executions (workflow_run_id);
+-- 9. RUN EVENTS
+--
+-- Append-only execution timeline.
+--
+-- Use this for:
+--   streaming canvas updates
+--   debugging
+--   audit
+--   future replay
+--   model/tool/human review trace
 
-CREATE INDEX idx_workflow_runs_workflow_id
-    ON workflow_runs (workflow_id);
+CREATE TABLE IF NOT EXISTS run_events (
+    id UUID PRIMARY KEY NOT NULL,
 
-CREATE INDEX idx_messages_session_id
-    ON messages (session_id);
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
 
-CREATE INDEX idx_prompt_versions_agent_id
-    ON prompt_versions (agent_id);
+    run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    node_run_id UUID NULL REFERENCES node_runs(id) ON DELETE SET NULL,
 
-CREATE INDEX idx_agent_tools_agent_id
-    ON agent_tools (agent_id);
+    sequence_no BIGINT NOT NULL,
+
+    event_type VARCHAR(100) NOT NULL,
+    -- RunStarted
+    -- RunCompleted
+    -- RunFailed
+    -- NodeStarted
+    -- NodeCompleted
+    -- NodeFailed
+    -- AgentStarted
+    -- AgentCompleted
+    -- AgentStepStarted
+    -- AgentStepCompleted
+    -- ToolCallRequested
+    -- ToolCallCompleted
+    -- ToolCallFailed
+    -- HumanReviewRequested
+    -- HumanReviewCompleted
+    -- CheckpointCreated
+    -- StatePatched
+
+    payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_run_events_run_sequence
+        UNIQUE (run_id, sequence_no)
+);
+
+
+
+-- 10. HUMAN REVIEW TASKS
+--
+-- First-class human review / approval / edit / takeover task.
+--
+-- Created when:
+--   - human_review node pauses the run
+--   - a tool approval policy requires human approval
+
+CREATE TABLE IF NOT EXISTS human_review_tasks (
+    id UUID PRIMARY KEY NOT NULL,
+
+    tenant_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+
+    run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    node_run_id UUID NOT NULL REFERENCES node_runs(id) ON DELETE CASCADE,
+
+    status VARCHAR(50) NOT NULL DEFAULT 'waiting',
+    -- waiting, claimed, in_review, approved, approved_with_edits,
+    -- changes_requested, rejected, takeover, cancelled, expired
+
+    queue_id VARCHAR(150) NULL,
+    assigned_to_user_id UUID NULL,
+
+    required_roles_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    required_permissions_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+    snapshot_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    form_schema_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    decision_json JSONB NULL,
+
+    priority VARCHAR(50) NOT NULL DEFAULT 'normal',
+    -- low, normal, high, urgent
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    claimed_at TIMESTAMPTZ NULL,
+    completed_at TIMESTAMPTZ NULL,
+    due_at TIMESTAMPTZ NULL
+);
+
