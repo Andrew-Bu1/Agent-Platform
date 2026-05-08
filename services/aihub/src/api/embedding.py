@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from src.api.dependencies import get_service_router
+from common.logger import get_logger
+
+from src.api.dependencies import get_caller_context, get_service_router
+from src.middleware.auth import CallerContext
 from src.models.embedding import EmbedResponse
 from src.services.router import ServiceRouter
 
-from common.logger import get_logger
 
 class EmbedRequest(BaseModel):
     model: str
@@ -20,9 +22,10 @@ def router() -> APIRouter:
     async def embed(
         request: EmbedRequest,
         service_router: ServiceRouter = Depends(get_service_router),
+        ctx: CallerContext = Depends(get_caller_context),
     ) -> EmbedResponse:
-        logger.info(f"Received embedding request for model {request.model} with input of type {type(request.input)}")
         inputs = request.input if isinstance(request.input, list) else [request.input]
-        return await service_router.embed(request.model, inputs)
+        logger.info(f"Embed request: model={request.model!r} inputs={len(inputs)} tenant={ctx.tenant_id}")
+        return await service_router.embed(request.model, inputs, ctx)
 
     return r

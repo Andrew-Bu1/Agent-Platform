@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from src.api.dependencies import get_service_router
+from src.api.dependencies import get_caller_context, get_service_router
+from src.middleware.auth import CallerContext
 from src.models.rerank import RerankResponse
 from src.services.router import ServiceRouter
 
@@ -20,9 +21,10 @@ def router() -> APIRouter:
     async def rerank(
         request: RerankRequest,
         service_router: ServiceRouter = Depends(get_service_router),
+        ctx: CallerContext = Depends(get_caller_context),
     ) -> RerankResponse:
         return await service_router.rerank(
-            request.model, request.query, request.documents, request.top_n
+            request.model, request.query, request.documents, request.top_n, ctx
         )
 
     return r

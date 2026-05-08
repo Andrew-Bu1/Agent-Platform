@@ -1,20 +1,19 @@
 import json
+import time
 from decimal import Decimal
-from typing import AsyncGenerator, Any
+from typing import AsyncGenerator
 
 from fastapi import HTTPException
 
-from common.config import OpenRouterConfig
-
+from src.adapters.registry import ProviderAdapterRegistry
+from src.models.auth import CallerContext
 from src.models.chat import ChatResponse
 from src.models.embedding import EmbedResponse
 from src.models.model_config import ModelConfig, ModelUsageLog
 from src.models.rerank import RerankResponse
 from src.repositories.model_config import ModelConfigRepository
 from src.repositories.model_usage_log import ModelUsageLogRepository
-from src.services.api.chat import OpenRouterChatService
-from src.services.local.embedding import LocalEmbeddingService
-from src.services.local.rerank import LocalRerankService
+from src.services.entitlement import EntitlementGuard
 
 
 class ServiceRouter:
@@ -22,26 +21,25 @@ class ServiceRouter:
         self,
         model_config_repo: ModelConfigRepository,
         model_usage_log_repo: ModelUsageLogRepository,
-        open_router_config: OpenRouterConfig,
-        model_dir: str = ".models",
+        entitlement_guard: EntitlementGuard,
+        registry: ProviderAdapterRegistry,
     ) -> None:
         self._model_config_repo = model_config_repo
         self._model_usage_log_repo = model_usage_log_repo
-        self._api_chat = OpenRouterChatService(open_router_config)
-        self._local_embed = LocalEmbeddingService(model_dir)
-        self._local_rerank = LocalRerankService(model_dir)
+        self._entitlement_guard = entitlement_guard
+        self._registry = registry
 
-    async def _get_model(self, name: str) -> ModelConfig:
-        config = await self._model_config_repo.get_by_name(name)
+    async def _get_model(self, model_key: str) -> ModelConfig:
+        config = await self._model_config_repo.get_by_model_key(model_key)
         if config is None:
-            raise HTTPException(status_code=404, detail=f"Model '{name}' not found or is inactive")
+            raise HTTPException(status_code=404, detail=f"Model '{model_key}' not found or is inactive")
         return config
 
     async def _log_usage(self, log: ModelUsageLog) -> None:
         try:
             await self._model_usage_log_repo.create(log)
         except Exception:
-            pass  # usage logging is best-effort
+            pass
 
     def _compute_cost(
         self,
@@ -58,75 +56,89 @@ class ServiceRouter:
             cost += config.output_cost * output_tokens
         return cost
 
+    def _base_log(self, config: ModelConfig, ctx: CallerContext) -> dict:
+        return dict(
+            tenant_id=ctx.tenant_id,
+            workspace_id=ctx.workspace_id,
+            user_id=ctx.user_id,
+            service_client_id=ctx.service_client_id,
+            model_id=config.id,
+            model_key=config.model_key,
+            operation_type=config.operation_type,
+        )
+
+    # ── Chat ──────────────────────────────────────────────────────────────────
+
     async def chat(
         self,
-        model_name: str,
+        model_key: str,
         messages: list[dict],
+        ctx: CallerContext,
         *,
         tools: list | None = None,
         tool_choice: str | dict | None = None,
     ) -> ChatResponse:
-        config = await self._get_model(model_name)
+        config = await self._get_model(model_key)
+        await self._entitlement_guard.check_before_call(
+            ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
+        )
 
-        if config.provider == "openrouter":
-            result = await self._api_chat.chat(config, messages, tools=tools, tool_choice=tool_choice)
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported provider '{config.provider}' for chat",
-            )
+        adapter = self._registry.get_chat(config.provider_key)
+        start = time.monotonic()
+        result = await adapter.chat(config, messages, tools=tools, tool_choice=tool_choice)
+        latency_ms = int((time.monotonic() - start) * 1000)
 
-        if result.usage:
-            await self._log_usage(
-                ModelUsageLog(
-                    model_id=config.id,
-                    input_tokens=result.usage.prompt_tokens,
-                    output_tokens=result.usage.completion_tokens,
-                    cost=self._compute_cost(
-                        config,
-                        result.usage.prompt_tokens,
-                        result.usage.completion_tokens,
-                    ),
-                    status="success",
-                )
-            )
+        input_t = result.usage.prompt_tokens if result.usage else None
+        output_t = result.usage.completion_tokens if result.usage else None
+        total_t = (input_t or 0) + (output_t or 0)
+
+        await self._entitlement_guard.record_usage(
+            ctx.tenant_id, config.model_key, config.operation_type, total_t
+        )
+        await self._log_usage(ModelUsageLog(
+            **self._base_log(config, ctx),
+            input_tokens=input_t,
+            output_tokens=output_t,
+            cost=self._compute_cost(config, input_t, output_t),
+            latency_ms=latency_ms,
+            status="success",
+        ))
 
         return result
 
     async def chat_stream(
         self,
-        model_name: str,
+        model_key: str,
         messages: list[dict],
+        ctx: CallerContext,
         *,
         tools: list | None = None,
         tool_choice: str | dict | None = None,
     ) -> AsyncGenerator[bytes, None]:
-        config = await self._get_model(model_name)
+        config = await self._get_model(model_key)
+        await self._entitlement_guard.check_before_call(
+            ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
+        )
 
-        if config.provider != "openrouter":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported provider '{config.provider}' for streaming chat",
-            )
-
-        raw = self._api_chat.chat_stream(config, messages, tools=tools, tool_choice=tool_choice)
-        return self._wrap_stream_with_usage(raw, config)
+        adapter = self._registry.get_chat(config.provider_key)
+        raw = adapter.chat_stream(config, messages, tools=tools, tool_choice=tool_choice)
+        return self._wrap_stream_with_usage(raw, config, ctx)
 
     async def _wrap_stream_with_usage(
         self,
         raw: AsyncGenerator[bytes, None],
         config: ModelConfig,
+        ctx: CallerContext,
     ) -> AsyncGenerator[bytes, None]:
-        """Pass-through stream that captures the SSE usage chunk and logs it after done."""
         leftover = ""
         last_usage: dict | None = None
+        start = time.monotonic()
         try:
             async for chunk in raw:
                 yield chunk
-                # Parse SSE lines incrementally — only to capture the usage object.
                 text = leftover + chunk.decode("utf-8", errors="replace")
                 lines = text.split("\n")
-                leftover = lines[-1]  # last element may be incomplete
+                leftover = lines[-1]
                 for line in lines[:-1]:
                     if line.startswith("data: ") and line != "data: [DONE]":
                         try:
@@ -136,69 +148,80 @@ class ServiceRouter:
                         except Exception:
                             pass
         finally:
-            if last_usage:
-                input_t = last_usage.get("prompt_tokens")
-                output_t = last_usage.get("completion_tokens")
-                await self._log_usage(
-                    ModelUsageLog(
-                        model_id=config.id,
-                        input_tokens=input_t,
-                        output_tokens=output_t,
-                        cost=self._compute_cost(config, input_t, output_t),
-                        status="success",
-                    )
-                )
+            latency_ms = int((time.monotonic() - start) * 1000)
+            input_t = last_usage.get("prompt_tokens") if last_usage else None
+            output_t = last_usage.get("completion_tokens") if last_usage else None
+            total_t = (input_t or 0) + (output_t or 0)
 
-    async def embed(self, model_name: str, inputs: list[str]) -> EmbedResponse:
-        config = await self._get_model(model_name)
-
-        if config.provider == "self-host":
-            result = await self._local_embed.embed(config, inputs)
-        elif config.provider == "openrouter":
-            raise HTTPException(status_code=501, detail="OpenRouter embedding not yet implemented")
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported provider '{config.provider}' for embedding",
+            await self._entitlement_guard.record_usage(
+                ctx.tenant_id, config.model_key, config.operation_type, total_t
             )
-
-        await self._log_usage(
-            ModelUsageLog(
-                model_id=config.id,
-                input_tokens=sum(len(t.split()) for t in inputs),
-                output_tokens=None,
-                cost=None,
+            await self._log_usage(ModelUsageLog(
+                **self._base_log(config, ctx),
+                input_tokens=input_t,
+                output_tokens=output_t,
+                cost=self._compute_cost(config, input_t, output_t),
+                latency_ms=latency_ms,
                 status="success",
-            )
+            ))
+
+    # ── Embed ─────────────────────────────────────────────────────────────────
+
+    async def embed(
+        self,
+        model_key: str,
+        inputs: list[str],
+        ctx: CallerContext,
+    ) -> EmbedResponse:
+        config = await self._get_model(model_key)
+        await self._entitlement_guard.check_before_call(
+            ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
         )
+
+        adapter = self._registry.get_embed(config.provider_key)
+        start = time.monotonic()
+        result = await adapter.embed(config, inputs)
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        total_t = result.usage.total_tokens or 0 if result.usage else 0
+        await self._entitlement_guard.record_usage(
+            ctx.tenant_id, config.model_key, config.operation_type, total_t
+        )
+        await self._log_usage(ModelUsageLog(
+            **self._base_log(config, ctx),
+            input_tokens=total_t,
+            latency_ms=latency_ms,
+            status="success",
+        ))
         return result
+
+    # ── Rerank ────────────────────────────────────────────────────────────────
 
     async def rerank(
         self,
-        model_name: str,
+        model_key: str,
         query: str,
         documents: list[str],
         top_n: int | None,
+        ctx: CallerContext,
     ) -> RerankResponse:
-        config = await self._get_model(model_name)
-
-        if config.provider == "self-host":
-            result = await self._local_rerank.rerank(config, query, documents, top_n)
-        elif config.provider == "openrouter":
-            raise HTTPException(status_code=501, detail="OpenRouter reranking not yet implemented")
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported provider '{config.provider}' for reranking",
-            )
-
-        await self._log_usage(
-            ModelUsageLog(
-                model_id=config.id,
-                input_tokens=len(documents),
-                output_tokens=None,
-                cost=None,
-                status="success",
-            )
+        config = await self._get_model(model_key)
+        await self._entitlement_guard.check_before_call(
+            ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
         )
+
+        adapter = self._registry.get_rerank(config.provider_key)
+        start = time.monotonic()
+        result = await adapter.rerank(config, query, documents, top_n)
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        await self._entitlement_guard.record_usage(
+            ctx.tenant_id, config.model_key, config.operation_type, len(documents)
+        )
+        await self._log_usage(ModelUsageLog(
+            **self._base_log(config, ctx),
+            input_tokens=len(documents),
+            latency_ms=latency_ms,
+            status="success",
+        ))
         return result

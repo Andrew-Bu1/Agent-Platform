@@ -45,7 +45,7 @@ class OpenRouterChatService:
         tool_choice: Any | None = None,
     ) -> ChatResponse:
         url = model_config.endpoint_url or f"{self._config.base_url}/chat/completions"
-        payload = self._build_payload(model_config.name, messages, tools, tool_choice)
+        payload = self._build_payload(model_config.provider_model_id, messages, tools, tool_choice)
 
         async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(url, json=payload, headers=self._headers())
@@ -91,7 +91,7 @@ class OpenRouterChatService:
     ) -> AsyncGenerator[bytes, None]:
         """Stream SSE chunks straight from OpenRouter to the caller."""
         url = model_config.endpoint_url or f"{self._config.base_url}/chat/completions"
-        payload = self._build_payload(model_config.name, messages, tools, tool_choice, stream=True)
+        payload = self._build_payload(model_config.provider_model_id, messages, tools, tool_choice, stream=True)
 
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
