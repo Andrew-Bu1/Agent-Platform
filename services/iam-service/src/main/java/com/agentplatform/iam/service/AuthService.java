@@ -79,7 +79,7 @@ public class AuthService {
             List<TenantInfo> tenants   // non-null when requireTenantSelection=true
     ) {}
 
-    @Transactional
+    @Transactional(readOnly = true)
     public LoginResult login(String email, String password) {
         IamUser user = userRepo.findByEmail(email)
                 .orElseThrow(() -> new UnauthorizedException(ErrorCode.INVALID_CREDENTIALS,
@@ -179,17 +179,11 @@ public class AuthService {
     @Transactional
     public void logoutCurrentSession(AuthContext ctx, String rawRefreshToken) {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
-            // Fall back to revoking all if no refresh token provided.
             logout(ctx);
             return;
         }
-        UUID userId = UUID.fromString(ctx.subject());
-        List<UserSession> sessions =
-                sessionRepo.findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(userId, OffsetDateTime.now());
-        sessions.stream()
-                .filter(s -> s.getSessionTokenHash() != null
-                        && PasswordHasher.verify(rawRefreshToken, s.getSessionTokenHash()))
-                .findFirst()
+        String tokenHash = PasswordHasher.hashToken(rawRefreshToken);
+        sessionRepo.findBySessionTokenHashAndRevokedAtIsNullAndExpiresAtAfter(tokenHash, OffsetDateTime.now())
                 .ifPresent(s -> {
                     s.setRevokedAt(OffsetDateTime.now());
                     sessionRepo.save(s);
@@ -222,6 +216,9 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public IamUser me(AuthContext ctx) {
+        if (!ctx.isUserToken()) {
+            throw new UnauthorizedException(ErrorCode.FORBIDDEN, "Endpoint requires a user token");
+        }
         return userRepo.findById(UUID.fromString(ctx.userId()))
                 .orElseThrow(() -> new UnauthorizedException(ErrorCode.USER_NOT_FOUND, "User not found"));
     }
@@ -244,21 +241,13 @@ public class AuthService {
             throw new UnauthorizedException(ErrorCode.TOKEN_INVALID, "Invalid token type");
         }
 
-        UUID userId = UUID.fromString(claims.getSubject());
-
-        // Find the active session whose hash matches this refresh token.
-        // BCrypt verify is done over a small list of active sessions — no N+1 risk in practice.
-        List<UserSession> sessions =
-                sessionRepo.findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(userId, OffsetDateTime.now());
-
-        UserSession session = sessions.stream()
-                .filter(s -> s.getSessionTokenHash() != null
-                        && PasswordHasher.verify(rawRefreshToken, s.getSessionTokenHash()))
-                .findFirst()
+        String tokenHash = PasswordHasher.hashToken(rawRefreshToken);
+        UserSession session = sessionRepo
+                .findBySessionTokenHashAndRevokedAtIsNullAndExpiresAtAfter(tokenHash, OffsetDateTime.now())
                 .orElseThrow(() -> new UnauthorizedException(ErrorCode.TOKEN_INVALID,
                         "Refresh token not recognized or already revoked"));
 
-        IamUser user = userRepo.findById(userId)
+        IamUser user = userRepo.findById(session.getUserId())
                 .orElseThrow(() -> new UnauthorizedException(ErrorCode.USER_NOT_FOUND, "User not found"));
 
         if (!"active".equals(user.getStatus())) {
@@ -310,17 +299,19 @@ public class AuthService {
 
     private void persistSession(UUID userId, UUID tenantId, UUID workspaceId,
                                  String refreshToken, String ipAddress, String userAgent) {
+        OffsetDateTime now = OffsetDateTime.now();
         UserSession session = new UserSession();
         session.setId(UUID.randomUUID());
         session.setUserId(userId);
         session.setTenantId(tenantId);
         session.setWorkspaceId(workspaceId);
-        session.setSessionTokenHash(PasswordHasher.hash(refreshToken));
+        session.setSessionTokenHash(PasswordHasher.hashToken(refreshToken));
         session.setAuthMethod("password");
         session.setIpAddress(ipAddress);
         session.setUserAgent(userAgent);
-        session.setExpiresAt(OffsetDateTime.now().plusSeconds(refreshTokenTtlSeconds));
-        session.setCreatedAt(OffsetDateTime.now());
+        session.setExpiresAt(now.plusSeconds(refreshTokenTtlSeconds));
+        session.setLastUsedAt(now);
+        session.setCreatedAt(now);
         sessionRepo.save(session);
     }
 }

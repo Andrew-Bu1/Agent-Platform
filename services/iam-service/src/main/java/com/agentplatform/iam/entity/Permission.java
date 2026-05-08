@@ -20,7 +20,10 @@ public class Permission {
     @Column(name = "id", nullable = false, updatable = false, columnDefinition = "UUID")
     private UUID id;
 
-    @Column(name = "key", nullable = false, unique = true, length = 200)
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
+    @Column(name = "key", nullable = false, length = 200)
     private String key;
 
     @Column(name = "resource", nullable = false, length = 100)

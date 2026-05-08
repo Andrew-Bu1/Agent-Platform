@@ -15,6 +15,20 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
 
     boolean existsByKey(String key);
 
+    boolean existsByResourceAndAction(String resource, String action);
+
+    /** Returns platform permissions (tenant_id IS NULL) plus the given tenant's custom permissions. */
+    @Query("SELECT p FROM Permission p WHERE p.tenantId IS NULL OR p.tenantId = :tenantId")
+    List<Permission> findVisibleToTenant(@Param("tenantId") UUID tenantId);
+
+    boolean existsByKeyAndTenantIdIsNull(String key);
+
+    boolean existsByKeyAndTenantId(String key, UUID tenantId);
+
+    boolean existsByResourceAndActionAndTenantIdIsNull(String resource, String action);
+
+    boolean existsByResourceAndActionAndTenantId(String resource, String action, UUID tenantId);
+
     /**
      * Collect all distinct permission keys for a user in a tenant + optional workspace.
      * Single UNION query — no N+1.
@@ -40,6 +54,8 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
             JOIN workspace_memberships wm ON wm.id = wmr.workspace_membership_id
             JOIN memberships m ON m.id = wm.membership_id
             WHERE m.user_id = :userId
+              AND m.tenant_id = :tenantId
+              AND m.status = 'active'
               AND wm.workspace_id = :workspaceId
               AND wm.status = 'active'
             """)

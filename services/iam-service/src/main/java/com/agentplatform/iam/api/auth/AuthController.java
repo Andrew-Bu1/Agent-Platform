@@ -105,6 +105,15 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok());
     }
 
+    /** Revoke only the current session identified by the provided refresh token. */
+    @PostMapping("/logout/session")
+    public ResponseEntity<ApiResponse<Void>> logoutSession(
+            @Valid @RequestBody RefreshRequest req,
+            @AuthenticationPrincipal AuthContext ctx) {
+        authService.logoutCurrentSession(ctx, req.refreshToken());
+        return ResponseEntity.ok(ApiResponse.ok());
+    }
+
     // ── Me ─────────────────────────────────────────────────────────────────────
 
     @GetMapping("/me")

@@ -53,6 +53,12 @@
       <artifactId>nimbus-jose-jwt</artifactId>
     </dependency>
 
+    <!-- OpenAPI / Swagger annotations only (no UI — each service brings its own springdoc starter) -->
+    <dependency>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-annotations-jakarta</artifactId>
+    </dependency>
+
     <!-- Lombok -->
     <dependency>
       <groupId>org.projectlombok</groupId>

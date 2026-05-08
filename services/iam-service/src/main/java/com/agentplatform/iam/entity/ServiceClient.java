@@ -9,6 +9,8 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -35,7 +37,7 @@ public class ServiceClient extends BaseUuidEntity {
     /** JSON array of audience strings, e.g. {@code ["datahub","aihub"]}. */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "allowed_audiences", nullable = false, columnDefinition = "jsonb")
-    private String allowedAudiences = "[]";
+    private List<String> allowedAudiences = new ArrayList<>();
 
     @Column(name = "access_token_ttl_seconds", nullable = false)
     private int accessTokenTtlSeconds = 3600;

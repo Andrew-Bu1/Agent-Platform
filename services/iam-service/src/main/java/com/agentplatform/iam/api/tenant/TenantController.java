@@ -132,7 +132,7 @@ public class TenantController {
 
         UUID userId = UUID.fromString(ctx.userId());
         List<WorkspaceDto> dtos = tenantService.listTenantWorkspaces(userId, tenantId).stream()
-                .map(w -> new WorkspaceDto(w.getId(), w.getTenantId(), w.getCode(), w.getName(), w.getStatus()))
+                .map(WorkspaceDto::from)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(dtos));
     }
@@ -145,8 +145,7 @@ public class TenantController {
 
         UUID userId = UUID.fromString(ctx.userId());
         var w = tenantService.getWorkspace(userId, tenantId, workspaceId);
-        return ResponseEntity.ok(ApiResponse.ok(
-                new WorkspaceDto(w.getId(), w.getTenantId(), w.getCode(), w.getName(), w.getStatus())));
+        return ResponseEntity.ok(ApiResponse.ok(WorkspaceDto.from(w)));
     }
 
     @PostMapping("/{tenantId}/workspaces")
@@ -158,7 +157,7 @@ public class TenantController {
         UUID userId = UUID.fromString(ctx.userId());
         var w = tenantService.createWorkspace(userId, tenantId, req.code(), req.name(), req.description());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok(new WorkspaceDto(w.getId(), w.getTenantId(), w.getCode(), w.getName(), w.getStatus())));
+                .body(ApiResponse.ok(WorkspaceDto.from(w)));
     }
 
     @PatchMapping("/{tenantId}/workspaces/{workspaceId}")
@@ -170,8 +169,7 @@ public class TenantController {
 
         UUID userId = UUID.fromString(ctx.userId());
         var w = tenantService.updateWorkspace(userId, tenantId, workspaceId, req.name(), req.description());
-        return ResponseEntity.ok(ApiResponse.ok(
-                new WorkspaceDto(w.getId(), w.getTenantId(), w.getCode(), w.getName(), w.getStatus())));
+        return ResponseEntity.ok(ApiResponse.ok(WorkspaceDto.from(w)));
     }
 
     @DeleteMapping("/{tenantId}/workspaces/{workspaceId}")

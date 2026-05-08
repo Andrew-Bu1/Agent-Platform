@@ -1,6 +1,7 @@
 package com.agentplatform.common.web;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -16,11 +17,19 @@ import lombok.Getter;
 @Getter
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(description = "Unified API response envelope")
 public class ApiResponse<T> {
 
+    @Schema(description = "Whether the request succeeded", example = "true")
     private final boolean success;
+
+    @Schema(description = "Response payload (present on success)")
     private final T data;
+
+    @Schema(description = "Error code (present on failure)", example = "NOT_FOUND")
     private final String error;
+
+    @Schema(description = "Human-readable error message (present on failure)", example = "User not found")
     private final String message;
 
     public static <T> ApiResponse<T> ok(T data) {

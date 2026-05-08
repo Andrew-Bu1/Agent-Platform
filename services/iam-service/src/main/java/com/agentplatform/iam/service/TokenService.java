@@ -3,10 +3,7 @@ package com.agentplatform.iam.service;
 import com.agentplatform.common.security.JwtClaims;
 import com.agentplatform.iam.entity.IamUser;
 import com.agentplatform.iam.entity.ServiceClient;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -25,7 +22,6 @@ public class TokenService {
     private static final List<String> USER_DEFAULT_AUD = List.of("studio", "datahub", "aihub");
 
     private final SigningKeyService signingKeyService;
-    private final ObjectMapper      objectMapper;
 
     /**
      * Returns the JWK Set JSON (public key only) for the JWKS endpoint.
@@ -63,10 +59,9 @@ public class TokenService {
      * @param client      the authenticated service client
      * @param permissions collected permission keys
      */
-    @SneakyThrows
     public JwtClaims buildServiceClientTokenClaims(ServiceClient client, List<String> permissions) {
-        List<String> audiences = objectMapper.readValue(
-                client.getAllowedAudiences(), new TypeReference<List<String>>() {});
+        List<String> audiences = client.getAllowedAudiences() != null
+                ? client.getAllowedAudiences() : List.of();
 
         Map<String, Object> custom = new LinkedHashMap<>();
         custom.put("client_id", client.getClientId());

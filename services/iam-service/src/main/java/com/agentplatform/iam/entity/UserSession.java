@@ -29,7 +29,7 @@ public class UserSession {
     @Column(name = "workspace_id")
     private UUID workspaceId;
 
-    /** BCrypt hash of the refresh token. */
+    /** SHA-256 hash of the refresh token (Base64-encoded). */
     @Column(name = "session_token_hash")
     private String sessionTokenHash;
 

@@ -18,7 +18,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -45,6 +44,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String token = header.substring(7);
         try {
             JWTClaimsSet claims = jwtVerifier.verify(token);
+
+            String tokenType = getStringClaim(claims, "token_type");
+            if (!"access".equals(tokenType)) {
+                // Refresh and pre_auth tokens must not grant access to API endpoints
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             AuthContext ctx = buildAuthContext(claims);
 
             List<SimpleGrantedAuthority> authorities = ctx.permissions().stream()

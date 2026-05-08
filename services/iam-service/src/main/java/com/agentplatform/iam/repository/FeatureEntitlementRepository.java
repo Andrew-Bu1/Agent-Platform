@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface FeatureEntitlementRepository extends JpaRepository<FeatureEntitlement, UUID> {
@@ -16,4 +17,12 @@ public interface FeatureEntitlementRepository extends JpaRepository<FeatureEntit
             WHERE fe.tenantId = :tenantId AND fe.enabled = true
             """)
     List<FeatureEntitlement> findEnabledByTenantId(@Param("tenantId") UUID tenantId);
+
+    List<FeatureEntitlement> findByTenantId(UUID tenantId);
+
+    Optional<FeatureEntitlement> findByTenantIdAndFeatureId(UUID tenantId, UUID featureId);
+
+    boolean existsByTenantIdAndFeatureId(UUID tenantId, UUID featureId);
+
+    boolean existsByFeatureId(UUID featureId);
 }

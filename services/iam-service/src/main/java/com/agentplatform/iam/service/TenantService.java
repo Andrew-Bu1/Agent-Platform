@@ -196,6 +196,24 @@ public class TenantService {
         }
     }
 
+    void requirePlatformAdmin(UUID userId) {
+        List<UUID> membershipIds = membershipRepo.findByUserIdAndStatus(userId, "active")
+                .stream().map(Membership::getId).toList();
+        if (membershipIds.isEmpty()) {
+            throw new ForbiddenException(ErrorCode.FORBIDDEN, "Platform admin access required");
+        }
+        List<UUID> roleIds = membershipRoleRepo.findByIdMembershipIdIn(membershipIds)
+                .stream().map(mr -> mr.getId().getRoleId()).toList();
+        if (roleIds.isEmpty()) {
+            throw new ForbiddenException(ErrorCode.FORBIDDEN, "Platform admin access required");
+        }
+        boolean isPlatformAdmin = roleRepo.findByIdIn(roleIds).stream()
+                .anyMatch(r -> "platform".equals(r.getScopeType()));
+        if (!isPlatformAdmin) {
+            throw new ForbiddenException(ErrorCode.FORBIDDEN, "Platform admin access required");
+        }
+    }
+
     WorkspaceMembership createWorkspaceMembershipInternal(UUID tenantId, UUID workspaceId, UUID membershipId) {
         // Idempotent — skip if already a member.
         return workspaceMembershipRepo

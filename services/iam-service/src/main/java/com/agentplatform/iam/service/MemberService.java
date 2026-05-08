@@ -128,16 +128,17 @@ public class MemberService {
         // Deactivate all workspace memberships for this tenant membership.
         workspaceMembershipRepo.findByMembershipId(membership.getId())
                 .forEach(wm -> {
+                    workspaceMembershipRoleRepo.deleteAllByWorkspaceMembershipId(wm.getId());
                     wm.setStatus("inactive");
                     workspaceMembershipRepo.save(wm);
                 });
 
+        membershipRoleRepo.deleteAllByMembershipId(membership.getId());
         membership.setStatus("inactive");
         membershipRepo.save(membership);
 
-        // Revoke all active sessions so the removed user cannot continue acting
-        // under this tenant with an existing token.
-        sessionRepo.revokeAllForUser(targetUserId, OffsetDateTime.now());
+        // Revoke only sessions for this tenant — the user may have active sessions in other tenants.
+        sessionRepo.revokeAllForUserAndTenant(targetUserId, tenantId, OffsetDateTime.now());
     }
 
     // ── Tenant role management ────────────────────────────────────────────────
@@ -275,6 +276,7 @@ public class MemberService {
                 .orElseThrow(() -> new NotFoundException(ErrorCode.MEMBERSHIP_NOT_FOUND,
                         "Target user is not a member of this workspace"));
 
+        workspaceMembershipRoleRepo.deleteAllByWorkspaceMembershipId(wm.getId());
         wm.setStatus("inactive");
         workspaceMembershipRepo.save(wm);
     }
@@ -341,9 +343,19 @@ public class MemberService {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private Role requireRole(String roleKey, String scopeHint) {
-        return roleRepo.findByKey(roleKey)
+        Role role = roleRepo.findByKey(roleKey)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.ROLE_NOT_FOUND,
                         "Role '" + roleKey + "' not found"));
+        if ("platform".equals(role.getScopeType())) {
+            throw new ForbiddenException(ErrorCode.FORBIDDEN,
+                    "Platform roles cannot be assigned by a tenant administrator");
+        }
+        if (!scopeHint.equals(role.getScopeType())) {
+            throw new ForbiddenException(ErrorCode.INVALID_REQUEST,
+                    "Role '" + roleKey + "' has scope '" + role.getScopeType()
+                            + "' and cannot be assigned in a '" + scopeHint + "' context");
+        }
+        return role;
     }
 
     private void requireWorkspaceInTenant(UUID workspaceId, UUID tenantId) {
@@ -352,3 +364,11 @@ public class MemberService {
                         "Workspace not found in this tenant"));
     }
 }
+
+
+
+
+
+
+
+
