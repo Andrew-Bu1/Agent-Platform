@@ -9,6 +9,8 @@ import (
 
 type Document struct {
 	ID           uuid.UUID       `db:"id"`
+	TenantID     uuid.UUID       `db:"tenant_id"`
+	WorkspaceID  uuid.UUID       `db:"workspace_id"`
 	DatasourceID uuid.UUID       `db:"datasource_id"`
 	Name		 string          `db:"name"`
 	FileHash     string          `db:"file_hash"`
@@ -30,6 +32,8 @@ type UpdateDocumentRequest struct {
 
 type DocumentResponse struct {
 	ID           uuid.UUID       `json:"id"`
+	TenantID     uuid.UUID       `json:"tenant_id"`
+	WorkspaceID  uuid.UUID       `json:"workspace_id"`
 	DatasourceID uuid.UUID       `json:"datasource_id"`
 	Name		 string          `json:"name"`
 	StoragePath  string          `json:"storage_path"`
@@ -41,6 +45,8 @@ type DocumentResponse struct {
 func (d *Document) ToResponse() DocumentResponse {
 	return DocumentResponse{
 		ID:           d.ID,
+		TenantID:     d.TenantID,
+		WorkspaceID:  d.WorkspaceID,
 		DatasourceID: d.DatasourceID,
 		Name:         d.Name,
 		StoragePath:  d.StoragePath,

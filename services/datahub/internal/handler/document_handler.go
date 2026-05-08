@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 
+	"services/datahub/internal/auth"
 	"services/datahub/internal/model"
 	"services/datahub/internal/service"
 
@@ -90,7 +91,10 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		Metadata:     metadata,
 	}
 
-	resp, err := h.svc.Create(r.Context(), req, header.Filename, data, fileHash)
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
+	resp, err := h.svc.Create(r.Context(), req, header.Filename, data, fileHash, tenantID, workspaceID)
 	if err != nil {
 		if errors.Is(err, service.ErrDuplicateFile) {
 			writeError(w, http.StatusConflict, err.Error())
@@ -113,13 +117,16 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string
 // @Router       /datasources/{datasource_id}/documents [get]
 func (h *DocumentHandler) ListByDatasource(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
 	datasourceID, err := uuid.Parse(r.PathValue("datasource_id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid datasource_id")
 		return
 	}
 
-	docs, err := h.svc.GetByDatasourceID(r.Context(), datasourceID)
+	docs, err := h.svc.GetByDatasourceID(r.Context(), datasourceID, tenantID, workspaceID)
 	if err != nil {
 		writeInternalError(w, "failed to retrieve documents", err)
 		return
@@ -138,13 +145,16 @@ func (h *DocumentHandler) ListByDatasource(w http.ResponseWriter, r *http.Reques
 // @Failure      404  {object}  map[string]string
 // @Router       /documents/{id} [get]
 func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 
-	doc, err := h.svc.GetByID(r.Context(), id)
+	doc, err := h.svc.GetByID(r.Context(), id, tenantID, workspaceID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "document not found")
 		return
@@ -165,6 +175,9 @@ func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 // @Failure      500   {object}  map[string]string
 // @Router       /documents/{id} [put]
 func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -177,7 +190,7 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, err := h.svc.Update(r.Context(), id, req)
+	doc, err := h.svc.Update(r.Context(), id, req, tenantID, workspaceID)
 	if err != nil {
 		writeInternalError(w, "failed to update document", err)
 		return
@@ -195,13 +208,16 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string
 // @Router       /documents/{id} [delete]
 func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 
-	if err := h.svc.Delete(r.Context(), id); err != nil {
+	if err := h.svc.Delete(r.Context(), id, tenantID, workspaceID); err != nil {
 		writeInternalError(w, "failed to delete document", err)
 		return
 	}

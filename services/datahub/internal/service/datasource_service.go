@@ -18,7 +18,7 @@ func NewDatasourceService(repo *repository.DatasourceRepository) *DatasourceServ
 	return &DatasourceService{repo: repo}
 }
 
-func (s *DatasourceService) Create(ctx context.Context, req model.CreateDatasourceRequest) (*model.DatasourceResponse, error) {
+func (s *DatasourceService) Create(ctx context.Context, req model.CreateDatasourceRequest, tenantID, workspaceID uuid.UUID) (*model.DatasourceResponse, error) {
 	now := time.Now().UTC()
 	
 	id, err := uuid.NewV7()
@@ -27,6 +27,8 @@ func (s *DatasourceService) Create(ctx context.Context, req model.CreateDatasour
 	}
 	d := &model.Datasource{
 		ID:          id,
+		TenantID:    tenantID,
+		WorkspaceID: workspaceID,
 		Name:        req.Name,
 		Description: req.Description,
 		CreatedAt:   now,
@@ -41,8 +43,8 @@ func (s *DatasourceService) Create(ctx context.Context, req model.CreateDatasour
 	return &resp, nil
 }
 
-func (s *DatasourceService) GetByID(ctx context.Context, id uuid.UUID) (*model.DatasourceResponse, error) {
-	d, err := s.repo.GetByID(ctx, id)
+func (s *DatasourceService) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.DatasourceResponse, error) {
+	d, err := s.repo.GetByID(ctx, id, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -50,8 +52,8 @@ func (s *DatasourceService) GetByID(ctx context.Context, id uuid.UUID) (*model.D
 	return &resp, nil
 }
 
-func (s *DatasourceService) GetAll(ctx context.Context) ([]model.DatasourceResponse, error) {
-	datasources, err := s.repo.GetAll(ctx)
+func (s *DatasourceService) GetAll(ctx context.Context, tenantID, workspaceID uuid.UUID) ([]model.DatasourceResponse, error) {
+	datasources, err := s.repo.GetAll(ctx, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -63,8 +65,8 @@ func (s *DatasourceService) GetAll(ctx context.Context) ([]model.DatasourceRespo
 	return responses, nil
 }
 
-func (s *DatasourceService) Update(ctx context.Context, id uuid.UUID, req model.UpdateDatasourceRequest) (*model.DatasourceResponse, error) {
-	d, err := s.repo.GetByID(ctx, id)
+func (s *DatasourceService) Update(ctx context.Context, id uuid.UUID, req model.UpdateDatasourceRequest, tenantID, workspaceID uuid.UUID) (*model.DatasourceResponse, error) {
+	d, err := s.repo.GetByID(ctx, id, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +87,6 @@ func (s *DatasourceService) Update(ctx context.Context, id uuid.UUID, req model.
 	return &resp, nil
 }
 
-func (s *DatasourceService) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+func (s *DatasourceService) Delete(ctx context.Context, id, tenantID, workspaceID uuid.UUID) error {
+	return s.repo.Delete(ctx, id, tenantID, workspaceID)
 }

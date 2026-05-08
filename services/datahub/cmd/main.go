@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	_ "services/datahub/docs"
+	"services/datahub/internal/auth"
 	"services/datahub/internal/config"
 	"services/datahub/internal/handler"
 	"services/datahub/internal/queue"
@@ -63,12 +64,14 @@ func main() {
 	documentSvc := service.NewDocumentService(documentRepo, minioStorage)
 	ingestionSvc := service.NewIngestionService(ingestionRepo, documentRepo, redisQueue)
 	chunkSvc := service.NewChunkService(chunkRepo)
+	searchSvc := service.NewSearchService(repository.NewSearchRepository(pool), datasourceRepo)
 
 	// Handlers
 	datasourceHandler := handler.NewDatasourceHandler(datasourceSvc)
 	documentHandler := handler.NewDocumentHandler(documentSvc)
 	ingestionHandler := handler.NewIngestionHandler(ingestionSvc)
 	chunkHandler := handler.NewChunkHandler(chunkSvc)
+	searchHandler := handler.NewSearchHandler(searchSvc)
 
 	mux := http.NewServeMux()
 
@@ -81,13 +84,14 @@ func main() {
 	documentHandler.RegisterRoutes(mux)
 	ingestionHandler.RegisterRoutes(mux)
 	chunkHandler.RegisterRoutes(mux)
+	searchHandler.RegisterRoutes(mux)
 
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("datahub starting on %s", addr)
 
-	if err := http.ListenAndServe(addr, handler.LoggingMiddleware(mux)); err != nil {
+	if err := http.ListenAndServe(addr, handler.LoggingMiddleware(auth.Middleware(mux))); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }

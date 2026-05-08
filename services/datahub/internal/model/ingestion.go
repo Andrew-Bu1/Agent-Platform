@@ -8,6 +8,8 @@ import (
 )
 type Ingestion struct {
 	ID 				uuid.UUID			`db:"id"`
+	TenantID 		uuid.UUID 			`db:"tenant_id"`
+	WorkspaceID 	uuid.UUID 			`db:"workspace_id"`
 	DocumentID 		uuid.UUID 			`db:"document_id"`
 	ChunkStrategy 	string 				`db:"chunk_strategy"`
 	ChunkConfig		json.RawMessage 	`db:"chunk_config"`
@@ -25,6 +27,8 @@ type CreateIngestionRequest struct {
 
 type IngestionResponse struct {
 	ID 				uuid.UUID		`json:"id"`
+	TenantID 		uuid.UUID 		`json:"tenant_id"`
+	WorkspaceID 	uuid.UUID 		`json:"workspace_id"`
 	DocumentID 		uuid.UUID 		`json:"document_id"`
 	ChunkStrategy 	string 			`json:"chunk_strategy"`
 	ChunkConfig		map[string]any 	`json:"chunk_config"`
@@ -46,6 +50,8 @@ func (i *Ingestion) ToResponse() IngestionResponse {
 
 	return IngestionResponse{
 		ID: i.ID,
+		TenantID: i.TenantID,
+		WorkspaceID: i.WorkspaceID,
 		DocumentID: i.DocumentID,
 		ChunkStrategy: i.ChunkStrategy,
 		ChunkConfig: chunkConfig,

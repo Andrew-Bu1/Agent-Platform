@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"services/datahub/internal/auth"
 	"services/datahub/internal/service"
 
 	"github.com/google/uuid"
@@ -37,7 +38,7 @@ func (h *ChunkHandler) ListByIngestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunks, err := h.svc.GetByIngestionID(r.Context(), ingestionID)
+	chunks, err := h.svc.GetByIngestionID(r.Context(), ingestionID, auth.TenantID(r.Context()), auth.WorkspaceID(r.Context()))
 	if err != nil {
 		writeInternalError(w, "failed to retrieve chunks", err)
 		return
@@ -62,7 +63,7 @@ func (h *ChunkHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk, err := h.svc.GetByID(r.Context(), id)
+	chunk, err := h.svc.GetByID(r.Context(), id, auth.TenantID(r.Context()), auth.WorkspaceID(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusNotFound, "chunk not found")
 		return

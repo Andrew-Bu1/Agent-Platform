@@ -18,17 +18,20 @@ func NewChunkRepository(db *pgxpool.Pool) *ChunkRepository {
 	return &ChunkRepository{db: db}
 }
 
-func (r *ChunkRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Chunk, error) {
+func (r *ChunkRepository) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.Chunk, error) {
 	const q = `
-		SELECT id, ingestion_id, chunk_index, content, metadata, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, document_id, ingestion_id, chunk_index, content, metadata, created_at, updated_at
 		FROM chunks
-		WHERE id = $1`
+		WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
-	row := r.db.QueryRow(ctx, q, id)
+	row := r.db.QueryRow(ctx, q, id, tenantID, workspaceID)
 
 	var c model.Chunk
 	if err := row.Scan(
 		&c.ID,
+		&c.TenantID,
+		&c.WorkspaceID,
+		&c.DocumentID,
 		&c.IngestionID,
 		&c.ChunkIndex,
 		&c.Content,
@@ -41,14 +44,14 @@ func (r *ChunkRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Chu
 	return &c, nil
 }
 
-func (r *ChunkRepository) GetByIngestionID(ctx context.Context, ingestionID uuid.UUID) ([]*model.Chunk, error) {
+func (r *ChunkRepository) GetByIngestionID(ctx context.Context, ingestionID, tenantID, workspaceID uuid.UUID) ([]*model.Chunk, error) {
 	const q = `
-		SELECT id, ingestion_id, chunk_index, content, metadata, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, document_id, ingestion_id, chunk_index, content, metadata, created_at, updated_at
 		FROM chunks
-		WHERE ingestion_id = $1
+		WHERE ingestion_id = $1 AND tenant_id = $2 AND workspace_id = $3
 		ORDER BY chunk_index ASC`
 
-	rows, err := r.db.Query(ctx, q, ingestionID)
+	rows, err := r.db.Query(ctx, q, ingestionID, tenantID, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("ChunkRepository.GetByIngestionID: %w", err)
 	}
@@ -59,6 +62,9 @@ func (r *ChunkRepository) GetByIngestionID(ctx context.Context, ingestionID uuid
 		var c model.Chunk
 		if err := rows.Scan(
 			&c.ID,
+			&c.TenantID,
+			&c.WorkspaceID,
+			&c.DocumentID,
 			&c.IngestionID,
 			&c.ChunkIndex,
 			&c.Content,

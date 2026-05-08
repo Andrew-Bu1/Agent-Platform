@@ -27,8 +27,8 @@ func NewDocumentService(repo *repository.DocumentRepository, minio *storage.Mini
 
 // Create uploads the file to MinIO then persists the document record.
 // The caller passes the raw file bytes; storagePath is computed here.
-func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRequest, name string, data []byte, fileHash string) (*model.DocumentResponse, error) {
-	existing, err := s.repo.FindByHash(ctx, req.DatasourceID, fileHash)
+func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRequest, name string, data []byte, fileHash string, tenantID, workspaceID uuid.UUID) (*model.DocumentResponse, error) {
+	existing, err := s.repo.FindByHash(ctx, req.DatasourceID, tenantID, workspaceID, fileHash)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
@@ -51,6 +51,8 @@ func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRe
 	}
 	d := &model.Document{
 		ID:           id,
+		TenantID:     tenantID,
+		WorkspaceID:  workspaceID,
 		DatasourceID: req.DatasourceID,
 		Name:         name,
 		FileHash:     fileHash,
@@ -68,8 +70,8 @@ func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRe
 	return &resp, nil
 }
 
-func (s *DocumentService) GetByID(ctx context.Context, id uuid.UUID) (*model.DocumentResponse, error) {
-	d, err := s.repo.GetByID(ctx, id)
+func (s *DocumentService) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.DocumentResponse, error) {
+	d, err := s.repo.GetByID(ctx, id, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -77,8 +79,8 @@ func (s *DocumentService) GetByID(ctx context.Context, id uuid.UUID) (*model.Doc
 	return &resp, nil
 }
 
-func (s *DocumentService) GetByDatasourceID(ctx context.Context, datasourceID uuid.UUID) ([]model.DocumentResponse, error) {
-	docs, err := s.repo.GetByDatasourceID(ctx, datasourceID)
+func (s *DocumentService) GetByDatasourceID(ctx context.Context, datasourceID, tenantID, workspaceID uuid.UUID) ([]model.DocumentResponse, error) {
+	docs, err := s.repo.GetByDatasourceID(ctx, datasourceID, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,8 +92,8 @@ func (s *DocumentService) GetByDatasourceID(ctx context.Context, datasourceID uu
 	return responses, nil
 }
 
-func (s *DocumentService) Update(ctx context.Context, id uuid.UUID, req model.UpdateDocumentRequest) (*model.DocumentResponse, error) {
-	d, err := s.repo.GetByID(ctx, id)
+func (s *DocumentService) Update(ctx context.Context, id uuid.UUID, req model.UpdateDocumentRequest, tenantID, workspaceID uuid.UUID) (*model.DocumentResponse, error) {
+	d, err := s.repo.GetByID(ctx, id, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +114,6 @@ func (s *DocumentService) Update(ctx context.Context, id uuid.UUID, req model.Up
 	return &resp, nil
 }
 
-func (s *DocumentService) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+func (s *DocumentService) Delete(ctx context.Context, id, tenantID, workspaceID uuid.UUID) error {
+	return s.repo.Delete(ctx, id, tenantID, workspaceID)
 }

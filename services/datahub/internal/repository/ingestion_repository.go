@@ -20,11 +20,13 @@ func NewIngestionRepository(db *pgxpool.Pool) *IngestionRepository {
 
 func (r *IngestionRepository) Insert(ctx context.Context, i *model.Ingestion) error {
 	const q = `
-		INSERT INTO ingestions (id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+		INSERT INTO ingestions (id, tenant_id, workspace_id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 
 	_, err := r.db.Exec(ctx, q,
 		i.ID,
+		i.TenantID,
+		i.WorkspaceID,
 		i.DocumentID,
 		i.ChunkStrategy,
 		i.ChunkConfig,
@@ -39,17 +41,19 @@ func (r *IngestionRepository) Insert(ctx context.Context, i *model.Ingestion) er
 	return nil
 }
 
-func (r *IngestionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Ingestion, error) {
+func (r *IngestionRepository) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.Ingestion, error) {
 	const q = `
-		SELECT id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
 		FROM ingestions
-		WHERE id = $1`
+		WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
-	row := r.db.QueryRow(ctx, q, id)
+	row := r.db.QueryRow(ctx, q, id, tenantID, workspaceID)
 
 	var i model.Ingestion
 	if err := row.Scan(
 		&i.ID,
+		&i.TenantID,
+		&i.WorkspaceID,
 		&i.DocumentID,
 		&i.ChunkStrategy,
 		&i.ChunkConfig,
@@ -63,14 +67,14 @@ func (r *IngestionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model
 	return &i, nil
 }
 
-func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID uuid.UUID) ([]*model.Ingestion, error) {
+func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID, tenantID, workspaceID uuid.UUID) ([]*model.Ingestion, error) {
 	const q = `
-		SELECT id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
 		FROM ingestions
-		WHERE document_id = $1
+		WHERE document_id = $1 AND tenant_id = $2 AND workspace_id = $3
 		ORDER BY created_at DESC`
 
-	rows, err := r.db.Query(ctx, q, documentID)
+	rows, err := r.db.Query(ctx, q, documentID, tenantID, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("IngestionRepository.GetByDocumentID: %w", err)
 	}
@@ -81,6 +85,8 @@ func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID uu
 		var i model.Ingestion
 		if err := rows.Scan(
 			&i.ID,
+			&i.TenantID,
+			&i.WorkspaceID,
 			&i.DocumentID,
 			&i.ChunkStrategy,
 			&i.ChunkConfig,
@@ -97,7 +103,7 @@ func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID uu
 }
 
 func (r *IngestionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	const q = `UPDATE ingestions SET status = $1 WHERE id = $2`
+	const q = `UPDATE ingestions SET status = $1, updated_at = NOW() WHERE id = $2`
 
 	_, err := r.db.Exec(ctx, q, status, id)
 	if err != nil {
@@ -106,10 +112,10 @@ func (r *IngestionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	return nil
 }
 
-func (r *IngestionRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	const q = `DELETE FROM ingestions WHERE id = $1`
+func (r *IngestionRepository) Delete(ctx context.Context, id, tenantID, workspaceID uuid.UUID) error {
+	const q = `DELETE FROM ingestions WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
-	_, err := r.db.Exec(ctx, q, id)
+	_, err := r.db.Exec(ctx, q, id, tenantID, workspaceID)
 	if err != nil {
 		return fmt.Errorf("IngestionRepository.Delete: %w", err)
 	}

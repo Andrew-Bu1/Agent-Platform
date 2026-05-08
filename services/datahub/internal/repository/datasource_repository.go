@@ -20,11 +20,13 @@ func NewDatasourceRepository(db *pgxpool.Pool) *DatasourceRepository {
 
 func (r *DatasourceRepository) Insert(ctx context.Context, d *model.Datasource) error {
 	const q = `
-		INSERT INTO datasources (id, name, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)`
+		INSERT INTO datasources (id, tenant_id, workspace_id, name, description, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 
 	_, err := r.db.Exec(ctx, q,
 		d.ID,
+		d.TenantID,
+		d.WorkspaceID,
 		d.Name,
 		d.Description,
 		d.CreatedAt,
@@ -36,17 +38,19 @@ func (r *DatasourceRepository) Insert(ctx context.Context, d *model.Datasource) 
 	return nil
 }
 
-func (r *DatasourceRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Datasource, error) {
+func (r *DatasourceRepository) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.Datasource, error) {
 	const q = `
-		SELECT id, name, description, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, name, description, created_at, updated_at
 		FROM datasources
-		WHERE id = $1`
+		WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
-	row := r.db.QueryRow(ctx, q, id)
+	row := r.db.QueryRow(ctx, q, id, tenantID, workspaceID)
 
 	var d model.Datasource
 	if err := row.Scan(
 		&d.ID,
+		&d.TenantID,
+		&d.WorkspaceID,
 		&d.Name,
 		&d.Description,
 		&d.CreatedAt,
@@ -57,13 +61,14 @@ func (r *DatasourceRepository) GetByID(ctx context.Context, id uuid.UUID) (*mode
 	return &d, nil
 }
 
-func (r *DatasourceRepository) GetAll(ctx context.Context) ([]*model.Datasource, error) {
+func (r *DatasourceRepository) GetAll(ctx context.Context, tenantID, workspaceID uuid.UUID) ([]*model.Datasource, error) {
 	const q = `
-		SELECT id, name, description, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, name, description, created_at, updated_at
 		FROM datasources
+		WHERE tenant_id = $1 AND workspace_id = $2
 		ORDER BY created_at DESC`
 
-	rows, err := r.db.Query(ctx, q)
+	rows, err := r.db.Query(ctx, q, tenantID, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("DatasourceRepository.GetAll: %w", err)
 	}
@@ -74,6 +79,8 @@ func (r *DatasourceRepository) GetAll(ctx context.Context) ([]*model.Datasource,
 		var d model.Datasource
 		if err := rows.Scan(
 			&d.ID,
+			&d.TenantID,
+			&d.WorkspaceID,
 			&d.Name,
 			&d.Description,
 			&d.CreatedAt,
@@ -90,13 +97,15 @@ func (r *DatasourceRepository) Update(ctx context.Context, d *model.Datasource) 
 	const q = `
 		UPDATE datasources
 		SET name = $1, description = $2, updated_at = $3
-		WHERE id = $4`
+		WHERE id = $4 AND tenant_id = $5 AND workspace_id = $6`
 
 	_, err := r.db.Exec(ctx, q,
 		d.Name,
 		d.Description,
 		d.UpdatedAt,
 		d.ID,
+		d.TenantID,
+		d.WorkspaceID,
 	)
 	if err != nil {
 		return fmt.Errorf("DatasourceRepository.Update: %w", err)
@@ -104,10 +113,10 @@ func (r *DatasourceRepository) Update(ctx context.Context, d *model.Datasource) 
 	return nil
 }
 
-func (r *DatasourceRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	const q = `DELETE FROM datasources WHERE id = $1`
+func (r *DatasourceRepository) Delete(ctx context.Context, id, tenantID, workspaceID uuid.UUID) error {
+	const q = `DELETE FROM datasources WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
-	_, err := r.db.Exec(ctx, q, id)
+	_, err := r.db.Exec(ctx, q, id, tenantID, workspaceID)
 	if err != nil {
 		return fmt.Errorf("DatasourceRepository.Delete: %w", err)
 	}

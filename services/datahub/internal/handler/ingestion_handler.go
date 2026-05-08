@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"services/datahub/internal/auth"
 	"services/datahub/internal/model"
 	"services/datahub/internal/service"
 
@@ -85,7 +86,7 @@ func (h *IngestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	
 
-	resp, err := h.svc.Create(r.Context(), req, documentID, chunkConfig)
+	resp, err := h.svc.Create(r.Context(), req, documentID, chunkConfig, auth.TenantID(r.Context()), auth.WorkspaceID(r.Context()))
 	if err != nil {
 		writeInternalError(w, "failed to create ingestion", err)
 		return
@@ -110,7 +111,7 @@ func (h *IngestionHandler) ListByDocument(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	ingestions, err := h.svc.GetByDocumentID(r.Context(), documentID)
+	ingestions, err := h.svc.GetByDocumentID(r.Context(), documentID, auth.TenantID(r.Context()), auth.WorkspaceID(r.Context()))
 	if err != nil {
 		writeInternalError(w, "failed to retrieve ingestions", err)
 		return
@@ -135,7 +136,7 @@ func (h *IngestionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ing, err := h.svc.GetByID(r.Context(), id)
+	ing, err := h.svc.GetByID(r.Context(), id, auth.TenantID(r.Context()), auth.WorkspaceID(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusNotFound, "ingestion not found")
 		return
@@ -159,7 +160,7 @@ func (h *IngestionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.Delete(r.Context(), id); err != nil {
+	if err := h.svc.Delete(r.Context(), id, auth.TenantID(r.Context()), auth.WorkspaceID(r.Context())); err != nil {
 		writeInternalError(w, "failed to delete ingestion", err)
 		return
 	}

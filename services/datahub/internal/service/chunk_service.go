@@ -17,8 +17,8 @@ func NewChunkService(repo *repository.ChunkRepository) *ChunkService {
 	return &ChunkService{repo: repo}
 }
 
-func (s *ChunkService) GetByID(ctx context.Context, id uuid.UUID) (*model.ChunkResponse, error) {
-	c, err := s.repo.GetByID(ctx, id)
+func (s *ChunkService) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.ChunkResponse, error) {
+	c, err := s.repo.GetByID(ctx, id, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -26,8 +26,8 @@ func (s *ChunkService) GetByID(ctx context.Context, id uuid.UUID) (*model.ChunkR
 	return &resp, nil
 }
 
-func (s *ChunkService) GetByIngestionID(ctx context.Context, ingestionID uuid.UUID) ([]model.ChunkResponse, error) {
-	chunks, err := s.repo.GetByIngestionID(ctx, ingestionID)
+func (s *ChunkService) GetByIngestionID(ctx context.Context, ingestionID, tenantID, workspaceID uuid.UUID) ([]model.ChunkResponse, error) {
+	chunks, err := s.repo.GetByIngestionID(ctx, ingestionID, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}

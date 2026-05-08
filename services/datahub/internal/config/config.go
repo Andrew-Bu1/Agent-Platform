@@ -19,7 +19,7 @@ func Load() *Config {
 	redisCfg := config.LoadRedisConfig()
 
 	Port := config.GetEnvInt("PORT", 8080)
-	IngestionQueue := config.GetEnvString("REDIS_INGESTION_QUEUE", "")
+	IngestionQueue := config.GetEnvString("REDIS_INGESTION_QUEUE", "datahub:queue:ingestion")
 
 	return &Config {
 		Postgres: 		postgresCfg,

@@ -36,15 +36,16 @@ func NewIngestionService(
 	return &IngestionService{repo: repo, documentRepo: documentRepo, queue: q}
 }
 
-// Create saves a new ingestion with status "processing" and immediately
+// Create saves a new ingestion with status "pending" and immediately
 // enqueues a ChunkJob so the data-worker starts chunking the document.
 func (s *IngestionService) Create(
 	ctx context.Context, 
 	req model.CreateIngestionRequest, 
 	documentID uuid.UUID,
 	chunkConfig json.RawMessage,
+	tenantID, workspaceID uuid.UUID,
 ) (*model.IngestionResponse, error) {
-	doc, err := s.documentRepo.GetByID(ctx, documentID)
+	doc, err := s.documentRepo.GetByID(ctx, documentID, tenantID, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("document not found: %w", err)
 	}
@@ -52,6 +53,8 @@ func (s *IngestionService) Create(
 	now := time.Now().UTC()
 	i := &model.Ingestion{
 		ID:             uuid.New(),
+		TenantID:       tenantID,
+		WorkspaceID:    workspaceID,
 		DocumentID:     documentID,
 		ChunkStrategy:  req.ChunkStrategy,
 		ChunkConfig: 	chunkConfig,
@@ -68,6 +71,8 @@ func (s *IngestionService) Create(
 	job := queue.ChunkJob{
 		IngestionID:    i.ID,
 		DocumentID:     i.DocumentID,
+		TenantID:       tenantID,
+		WorkspaceID:    workspaceID,
 		StoragePath:    doc.StoragePath,
 		ChunkStrategy:  i.ChunkStrategy,
 		ChunkConfig:    i.ChunkConfig,
@@ -83,8 +88,8 @@ func (s *IngestionService) Create(
 	return &resp, nil
 }
 
-func (s *IngestionService) GetByID(ctx context.Context, id uuid.UUID) (*model.IngestionResponse, error) {
-	i, err := s.repo.GetByID(ctx, id)
+func (s *IngestionService) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.IngestionResponse, error) {
+	i, err := s.repo.GetByID(ctx, id, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +97,8 @@ func (s *IngestionService) GetByID(ctx context.Context, id uuid.UUID) (*model.In
 	return &resp, nil
 }
 
-func (s *IngestionService) GetByDocumentID(ctx context.Context, documentID uuid.UUID) ([]model.IngestionResponse, error) {
-	ingestions, err := s.repo.GetByDocumentID(ctx, documentID)
+func (s *IngestionService) GetByDocumentID(ctx context.Context, documentID, tenantID, workspaceID uuid.UUID) ([]model.IngestionResponse, error) {
+	ingestions, err := s.repo.GetByDocumentID(ctx, documentID, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +114,6 @@ func (s *IngestionService) UpdateStatus(ctx context.Context, id uuid.UUID, statu
 	return s.repo.UpdateStatus(ctx, id, status)
 }
 
-func (s *IngestionService) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+func (s *IngestionService) Delete(ctx context.Context, id, tenantID, workspaceID uuid.UUID) error {
+	return s.repo.Delete(ctx, id, tenantID, workspaceID)
 }

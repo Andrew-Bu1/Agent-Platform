@@ -9,6 +9,9 @@ import (
 
 type Chunk struct {
 	ID          uuid.UUID       `db:"id"`
+	TenantID    uuid.UUID       `db:"tenant_id"`
+	WorkspaceID uuid.UUID       `db:"workspace_id"`
+	DocumentID  uuid.UUID       `db:"document_id"`
 	IngestionID uuid.UUID       `db:"ingestion_id"`
 	ChunkIndex  int             `db:"chunk_index"`
 	Content     string          `db:"content"`
@@ -18,7 +21,10 @@ type Chunk struct {
 }
 
 type ChunkResponse struct {
-	ID          uuid.UUID       `json:"id"`	
+	ID          uuid.UUID       `json:"id"`
+	TenantID    uuid.UUID       `json:"tenant_id"`
+	WorkspaceID uuid.UUID       `json:"workspace_id"`
+	DocumentID  uuid.UUID       `json:"document_id"`
 	IngestionID uuid.UUID       `json:"ingestion_id"`
 	ChunkIndex  int             `json:"chunk_index"`
 	Content     string          `json:"content"`
@@ -30,6 +36,9 @@ type ChunkResponse struct {
 func (c *Chunk) ToResponse() ChunkResponse {
 	return ChunkResponse{
 		ID:          c.ID,
+		TenantID:    c.TenantID,
+		WorkspaceID: c.WorkspaceID,
+		DocumentID:  c.DocumentID,
 		IngestionID: c.IngestionID,
 		ChunkIndex:  c.ChunkIndex,
 		Content:     c.Content,

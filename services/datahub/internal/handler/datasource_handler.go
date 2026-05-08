@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"services/datahub/internal/auth"
 	"services/datahub/internal/model"
 	"services/datahub/internal/service"
 
@@ -37,6 +38,9 @@ func (h *DatasourceHandler) RegisterRoutes(mux *http.ServeMux) {
 // @Failure      500   {object}  map[string]string
 // @Router       /datasources [post]
 func (h *DatasourceHandler) Create(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
 	var req model.CreateDatasourceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -47,7 +51,7 @@ func (h *DatasourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.Create(r.Context(), req)
+	resp, err := h.svc.Create(r.Context(), req, tenantID, workspaceID)
 	if err != nil {
 		writeInternalError(w, "failed to create datasource", err)
 		return
@@ -64,7 +68,10 @@ func (h *DatasourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string
 // @Router       /datasources [get]
 func (h *DatasourceHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	datasources, err := h.svc.GetAll(r.Context())
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
+	datasources, err := h.svc.GetAll(r.Context(), tenantID, workspaceID)
 	if err != nil {
 		writeInternalError(w, "failed to retrieve datasources", err)
 		return
@@ -83,13 +90,16 @@ func (h *DatasourceHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 // @Failure      404  {object}  map[string]string
 // @Router       /datasources/{id} [get]
 func (h *DatasourceHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 
-	ds, err := h.svc.GetByID(r.Context(), id)
+	ds, err := h.svc.GetByID(r.Context(), id, tenantID, workspaceID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "datasource not found")
 		return
@@ -110,6 +120,9 @@ func (h *DatasourceHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 // @Failure      500   {object}  map[string]string
 // @Router       /datasources/{id} [put]
 func (h *DatasourceHandler) Update(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -122,7 +135,7 @@ func (h *DatasourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ds, err := h.svc.Update(r.Context(), id, req)
+	ds, err := h.svc.Update(r.Context(), id, req, tenantID, workspaceID)
 	if err != nil {
 		writeInternalError(w, "failed to update datasource", err)
 		return
@@ -140,13 +153,16 @@ func (h *DatasourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string
 // @Router       /datasources/{id} [delete]
 func (h *DatasourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 
-	if err := h.svc.Delete(r.Context(), id); err != nil {
+	if err := h.svc.Delete(r.Context(), id, tenantID, workspaceID); err != nil {
 		writeInternalError(w, "failed to delete datasource", err)
 		return
 	}

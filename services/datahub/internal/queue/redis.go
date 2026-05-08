@@ -15,6 +15,8 @@ import (
 type ChunkJob struct {
 	IngestionID    uuid.UUID 		`json:"ingestion_id"`
 	DocumentID     uuid.UUID 		`json:"document_id"`
+	TenantID       uuid.UUID		`json:"tenant_id"`
+	WorkspaceID    uuid.UUID		`json:"workspace_id"`
 	StoragePath    string    		`json:"storage_path"`
 	ChunkStrategy  string    		`json:"chunk_strategy"`
 	ChunkConfig    json.RawMessage 	`json:"chunk_config"`
