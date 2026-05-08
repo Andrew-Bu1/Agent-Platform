@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"libs/go/common/config"
 	"net/http"
 
@@ -52,6 +53,21 @@ func (s *MinioStorage) UploadFile(ctx context.Context, objectName string, data [
 		return "", fmt.Errorf("PutObject %s: %w", objectName, err)
 	}
 	return fmt.Sprintf("%s/%s", s.bucket, objectName), nil
+}
+
+// DownloadFile fetches an object from the bucket and returns its bytes.
+func (s *MinioStorage) DownloadFile(ctx context.Context, objectName string) ([]byte, error) {
+	obj, err := s.client.GetObject(ctx, s.bucket, objectName, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("GetObject %s: %w", objectName, err)
+	}
+	defer obj.Close()
+
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, fmt.Errorf("ReadAll %s: %w", objectName, err)
+	}
+	return data, nil
 }
 
 // DeleteFile removes an object from the bucket.
