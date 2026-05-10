@@ -142,7 +142,7 @@ Roles have a **scope type** that determines what they grant access to:
 |---|---|---|
 | `platform` | `platform_admin` | — (system only) |
 | `tenant` | `tenant_admin` | tenant admin |
-| `workspace` | `workspace_owner`, `workspace_member` | tenant admin |
+| `workspace` | `workspace_owner`, `workspace_member`, `agent_builder`, `viewer` | tenant admin |
 
 Tenant admins can also create **custom roles** scoped to `tenant` or `workspace`.
 
@@ -277,15 +277,22 @@ System roles seeded at DB init: `platform_admin`, `tenant_admin`, `workspace_own
 
 Access tokens (RS256) carry:
 
-| Claim | Description |
-|---|---|
-| `sub` | User ID or service client ID |
-| `tenant_id` | Active tenant context |
-| `workspace_id` | Active workspace context |
-| `permissions` | List of effective permission keys |
-| `type` | `user` or `service_client` |
+| Claim | User token | Service-client token | Description |
+|---|---|---|---|
+| `sub` | user UUID | `client_id` string | Subject |
+| `iss` | `iam-service` | `iam-service` | Issuer — validated by all downstream services |
+| `aud` | `["studio","datahub","aihub"]` | client's `allowedAudiences` | Audience — downstream services reject tokens where `aud` does not include their own key |
+| `token_type` | `access` | `access` | Must be `access`; refresh tokens carry `refresh` and are never accepted by downstream services |
+| `type` | `user` | `service_client` | Caller identity type |
+| `tenant_id` | tenant UUID | tenant UUID (if set) | Active tenant context |
+| `workspace_id` | workspace UUID | — (absent) | Active workspace context (user tokens only) |
+| `user_id` | user UUID | — (absent) | Redundant copy of `sub` for user tokens |
+| `client_id` | — (absent) | `client_id` string | Redundant copy of `sub` for service-client tokens |
+| `permissions` | `["agent:run", ...]` | `["datasource:ingest", ...]` | Effective permission keys embedded at issuance |
+| `exp` | Unix timestamp | Unix timestamp | Expiration |
 
-Tokens are verified by downstream services using the public key from `/.well-known/jwks.json`.
+Tokens are verified by downstream services using the public key from `/.well-known/jwks.json`.  
+Downstream services must validate `iss`, `aud`, `token_type`, and `exp`. They must **not** call IAM on every request — JWKS is cached locally and re-fetched only on unknown `kid` (key rotation).
 
 ---
 

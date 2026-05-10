@@ -1,0 +1,319 @@
+# Agent Studio — Architecture Overview
+
+**Last updated:** 2026-05-10  
+**Status:** Backend complete (all phases implemented)
+
+---
+
+## What is Agent Studio?
+
+Agent Studio is the **Java Spring Boot backend** that acts as the primary API gateway and BFF (Backend For Frontend) for the entire platform. It owns:
+
+- Agent & Tool definitions (CRUD)
+- Flow canvas versioning and publishing
+- Thin proxies to all downstream microservices (IAM, AIHub, DataHub, Orchestrator)
+
+It does **not** run agents or execute flows — that is the Orchestrator's job.
+
+---
+
+## Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Java 17, Spring Boot 3.4.1 |
+| Auth | Stateless JWT (RS256 via `libs/java/common`) |
+| DB | PostgreSQL (Flyway migrations, Spring Data JPA) |
+| HTTP Client | Spring `RestClient` (for proxying) |
+| SSE | Spring `SseEmitter` + `@Async` thread pool |
+| Build | Maven 3 (reactor parent `pom.xml`) |
+
+---
+
+## Database Schema (agent_studio DB)
+
+All Flyway migrations live in `services/agent-studio/src/main/resources/db/migration/`.
+
+| Migration | Description |
+|---|---|
+| `V1__init.sql` | Core schema — agents, tools, flows, flow_versions, threads, runs, node_runs, run_events |
+| `V2__agent_tool_ids.sql` | Adds `tool_ids UUID[]` column to agents |
+| `V3__agent_model_id.sql` | Adds `model_id VARCHAR(255)` column to agents |
+
+### Key Tables
+
+```
+agents          — reusable agent/team library items
+tools           — reusable tool definitions (http, function, webhook, …)
+flows           — mutable flow canvas metadata
+flow_versions   — immutable published snapshot (graph_json + settings_json)
+threads         — conversation/session boundary (links runs together)
+runs            — one execution of one flow_version
+node_runs       — per-node execution record within a run
+run_events      — persisted SSE events for reconnect/replay
+```
+
+---
+
+## API Surface (agent-studio)
+
+Base path: `/api/v1`  
+Auth header: `Authorization: Bearer <access_token>`  
+All responses: `ApiResponse<T>` envelope from `libs/java/common`.
+
+### Agents
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/agents` | List agents (paginated) |
+| `POST` | `/agents` | Create agent |
+| `GET` | `/agents/{id}` | Get agent |
+| `PUT` | `/agents/{id}` | Update agent |
+| `DELETE` | `/agents/{id}` | Archive agent |
+
+**Agent fields (added):**
+- `tool_ids: UUID[]` — list of Tool IDs attached to this agent
+- `model_id: String` — AIHub model identifier (e.g. `gpt-4o`)
+
+### Tools
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/tools` | List tools (paginated) |
+| `POST` | `/tools` | Create tool |
+| `GET` | `/tools/{id}` | Get tool |
+| `PUT` | `/tools/{id}` | Update tool |
+| `DELETE` | `/tools/{id}` | Archive tool |
+
+### Flows
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/flows` | List flows (paginated) |
+| `POST` | `/flows` | Create flow |
+| `GET` | `/flows/{id}` | Get flow |
+| `PUT` | `/flows/{id}` | Update flow |
+| `DELETE` | `/flows/{id}` | Archive flow |
+| `GET` | `/flows/{id}/versions` | List versions |
+| `POST` | `/flows/{id}/versions` | Create draft version |
+| `GET` | `/flows/{id}/versions/{vid}` | Get version |
+| `PUT` | `/flows/{id}/versions/{vid}` | Update draft version |
+| `POST` | `/flows/{id}/versions/{vid}/publish` | Publish version |
+
+**Publish validation** (enforced in `FlowService.publish()`):
+- `graph_json` must be valid JSON
+- `entry_node_id` must be non-null and non-blank
+- `nodes` must be a non-empty object
+
+---
+
+## BFF Proxy Layer
+
+Agent Studio proxies all calls from the frontend to downstream services, forwarding the original bearer token. This means the frontend only talks to one service.
+
+```
+Browser / Agent Studio Web
+         │
+         ▼
+   agent-studio :8080
+   /api/v1/auth/**      ─── IAM Service :8080
+   /api/v1/tenants/**   ─── IAM Service :8080
+   /api/v1/aihub/**     ─── AIHub :8000
+   /api/v1/datahub/**   ─── DataHub :8082
+   /api/v1/orchestrator/threads/**  ─── Orchestrator :8085
+   /api/v1/orchestrator/runs/**     ─── Orchestrator :8085
+```
+
+### IAM Proxy (`/api/v1/auth/**`, `/api/v1/tenants/**`)
+
+**Auth endpoints** (public — no JWT required):
+
+| Method | BFF Path | IAM Path |
+|---|---|---|
+| `POST` | `/api/v1/auth/signup` | `POST /auth/signup` |
+| `POST` | `/api/v1/auth/login` | `POST /auth/login` |
+| `POST` | `/api/v1/auth/refresh` | `POST /auth/refresh` |
+| `POST` | `/api/v1/auth/workspaces` | `POST /auth/workspaces` |
+| `POST` | `/api/v1/auth/switch-context` | `POST /auth/switch-context` |
+| `POST` | `/api/v1/auth/logout/session` | `POST /auth/logout/session` |
+| `POST` | `/api/v1/tenants/bootstrap` | `POST /tenants/bootstrap` |
+
+**Auth endpoints** (JWT required):
+
+| Method | BFF Path | IAM Path |
+|---|---|---|
+| `GET` | `/api/v1/auth/me` | `GET /auth/me` |
+| `POST` | `/api/v1/auth/logout` | `POST /auth/logout` |
+| `PATCH` | `/api/v1/auth/me/password` | `PATCH /auth/me/password` |
+
+**Tenant management** (JWT required):
+
+| Method | BFF Path | IAM Path |
+|---|---|---|
+| `GET` | `/api/v1/tenants` | `GET /tenants` |
+| `POST` | `/api/v1/tenants` | `POST /tenants` |
+| `GET` | `/api/v1/tenants/{id}` | `GET /tenants/{id}` |
+| `PUT` | `/api/v1/tenants/{id}` | `PUT /tenants/{id}` |
+| `GET` | `/api/v1/tenants/{id}/members` | `GET /tenants/{id}/members` |
+| `POST` | `/api/v1/tenants/{id}/members` | `POST /tenants/{id}/members` |
+| `DELETE` | `/api/v1/tenants/{id}/members/{uid}` | `DELETE /tenants/{id}/members/{uid}` |
+| `PUT` | `/api/v1/tenants/{id}/members/{uid}/role` | `PUT /tenants/{id}/members/{uid}/role` |
+| `GET` | `/api/v1/tenants/{id}/workspaces` | `GET /tenants/{id}/workspaces` |
+| `POST` | `/api/v1/tenants/{id}/workspaces` | `POST /tenants/{id}/workspaces` |
+| `GET` | `/api/v1/tenants/{id}/workspaces/{wid}` | `GET /tenants/{id}/workspaces/{wid}` |
+| `PUT` | `/api/v1/tenants/{id}/workspaces/{wid}` | `PUT /tenants/{id}/workspaces/{wid}` |
+| `GET` | `/api/v1/tenants/{id}/workspaces/{wid}/members` | `GET /tenants/{id}/workspaces/{wid}/members` |
+| `POST` | `/api/v1/tenants/{id}/workspaces/{wid}/members` | `POST /tenants/{id}/workspaces/{wid}/members` |
+| `DELETE` | `/api/v1/tenants/{id}/workspaces/{wid}/members/{uid}` | `DELETE /tenants/{id}/workspaces/{wid}/members/{uid}` |
+| `PUT` | `/api/v1/tenants/{id}/workspaces/{wid}/members/{uid}/role` | `PUT /tenants/{id}/workspaces/{wid}/members/{uid}/role` |
+
+### AIHub Proxy (`/api/v1/aihub/**`)
+
+| Method | BFF Path | AIHub Path |
+|---|---|---|
+| `GET` | `/api/v1/aihub/models` | `GET /v1/models` |
+| `POST` | `/api/v1/aihub/models` | `POST /v1/models` |
+| `GET` | `/api/v1/aihub/models/{id}` | `GET /v1/models/{id}` |
+| `PUT` | `/api/v1/aihub/models/{id}` | `PUT /v1/models/{id}` |
+| `DELETE` | `/api/v1/aihub/models/{id}` | `DELETE /v1/models/{id}` |
+| `GET` | `/api/v1/aihub/providers` | `GET /v1/providers` |
+| `POST` | `/api/v1/aihub/providers` | `POST /v1/providers` |
+| `GET` | `/api/v1/aihub/providers/{id}` | `GET /v1/providers/{id}` |
+| `PUT` | `/api/v1/aihub/providers/{id}` | `PUT /v1/providers/{id}` |
+| `DELETE` | `/api/v1/aihub/providers/{id}` | `DELETE /v1/providers/{id}` |
+| `GET` | `/api/v1/aihub/model-usage-logs` | `GET /v1/model-usage-logs` |
+
+### DataHub Proxy (`/api/v1/datahub/**`)
+
+| Method | BFF Path | DataHub Path |
+|---|---|---|
+| `GET` | `/api/v1/datahub/datasources` | `GET /datasources` |
+| `POST` | `/api/v1/datahub/datasources` | `POST /datasources` |
+| `GET` | `/api/v1/datahub/datasources/{id}` | `GET /datasources/{id}` |
+| `PUT` | `/api/v1/datahub/datasources/{id}` | `PUT /datasources/{id}` |
+| `DELETE` | `/api/v1/datahub/datasources/{id}` | `DELETE /datasources/{id}` |
+| `POST` | `/api/v1/datahub/datasources/{id}/search` | `POST /datasources/{id}/search` |
+| `GET` | `/api/v1/datahub/datasources/{dsId}/documents` | `GET /datasources/{dsId}/documents` |
+| `POST` | `/api/v1/datahub/datasources/{dsId}/documents` | `POST /datasources/{dsId}/documents` |
+| `GET` | `/api/v1/datahub/documents/{id}` | `GET /documents/{id}` |
+| `PUT` | `/api/v1/datahub/documents/{id}` | `PUT /documents/{id}` |
+| `DELETE` | `/api/v1/datahub/documents/{id}` | `DELETE /documents/{id}` |
+| `GET` | `/api/v1/datahub/documents/{docId}/ingestions` | `GET /documents/{docId}/ingestions` |
+| `POST` | `/api/v1/datahub/documents/{docId}/ingestions` | `POST /documents/{docId}/ingestions` |
+| `GET` | `/api/v1/datahub/ingestions/{id}` | `GET /ingestions/{id}` |
+| `DELETE` | `/api/v1/datahub/ingestions/{id}` | `DELETE /ingestions/{id}` |
+| `GET` | `/api/v1/datahub/ingestions/{ingId}/chunks` | `GET /ingestions/{ingId}/chunks` |
+| `GET` | `/api/v1/datahub/chunks/{id}` | `GET /chunks/{id}` |
+
+### Orchestrator Proxy (`/api/v1/orchestrator/**`)
+
+**Threads:**
+
+| Method | BFF Path | Orchestrator Path |
+|---|---|---|
+| `POST` | `/api/v1/orchestrator/threads` | `POST /threads` |
+| `GET` | `/api/v1/orchestrator/threads` | `GET /threads` |
+| `GET` | `/api/v1/orchestrator/threads/{id}` | `GET /threads/{id}` |
+| `GET` | `/api/v1/orchestrator/threads/{id}/runs` | `GET /threads/{id}/runs` |
+
+**Runs:**
+
+| Method | BFF Path | Orchestrator Path | Notes |
+|---|---|---|---|
+| `POST` | `/api/v1/orchestrator/runs` | `POST /runs` | Returns initial run JSON |
+| `GET` | `/api/v1/orchestrator/runs/{id}` | `GET /runs/{id}` | Run snapshot |
+| `POST` | `/api/v1/orchestrator/runs/{id}/cancel` | `POST /runs/{id}/cancel` | |
+| `POST` | `/api/v1/orchestrator/runs/{id}/resume` | `POST /runs/{id}/resume` | Human review decision |
+| `GET` | `/api/v1/orchestrator/runs/{id}/events` | `GET /runs/{id}/events` | SSE stream (proxied) |
+| `GET` | `/api/v1/orchestrator/runs/pending-review` | `GET /runs/pending-review` | All waiting_for_human runs |
+
+> **SSE proxy note:** `GET /runs/{id}/events` uses `SseEmitter(-1L)` + `@Async("sseProxyExecutor")` 
+> (core=20, max=200 threads). The Tomcat thread is released immediately; the async thread 
+> reads from the orchestrator and pipes events to the emitter.
+
+---
+
+## Configuration (`application.properties`)
+
+```properties
+app.iam.url=${IAM_URL:http://localhost:8080}
+app.aihub.url=${AIHUB_URL:http://localhost:8000}
+app.datahub.url=${DATAHUB_URL:http://localhost:8082}
+app.orchestrator.url=${ORCHESTRATOR_URL:http://localhost:8085}
+spring.mvc.async.request-timeout=-1
+```
+
+---
+
+## Security
+
+- `JwtAuthFilter` (from `libs/java/common`) verifies RS256 tokens on every request
+- `AuthContext` principal is injected into controller/service methods
+- Bearer token is forwarded to all downstream services via `bearerForwardInterceptor()`
+- Permit-all paths (no JWT): `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/signup`, `/api/v1/auth/workspaces`, `/api/v1/auth/switch-context`, `/api/v1/auth/logout/session`, `/api/v1/tenants/bootstrap`
+
+---
+
+## Error Handling
+
+All errors map through `GlobalExceptionHandler` (auto-configured from `libs/java/common`):
+
+| Exception | HTTP Status |
+|---|---|
+| `NotFoundException` | 404 |
+| `UnauthorizedException` | 401 |
+| `ForbiddenException` | 403 |
+| `ConflictException` | 409 |
+| `AppException(VALIDATION_ERROR)` | 400 |
+| `AppException(INTERNAL_SERVER_ERROR)` | 500 |
+| Proxy `HttpClientErrorException` | Mapped to `AppException` then handled above |
+
+Response envelope:
+```json
+{
+  "success": false,
+  "errorCode": "NOT_FOUND",
+  "message": "Flow not found: <uuid>"
+}
+```
+
+---
+
+## Source Layout
+
+```
+services/agent-studio/src/main/java/com/agentplatform/studio/
+├── config/
+│   ├── DownstreamConfig.java      — RestClient beans (iam, aihub, datahub, orchestrator)
+│   ├── SecurityConfig.java        — JWT filter + permit-all paths
+│   └── SseConfig.java             — @EnableAsync + sseProxyExecutor thread pool
+├── entity/
+│   ├── Agent.java                 — JPA entity (tool_ids UUID[], model_id)
+│   ├── Flow.java
+│   ├── FlowVersion.java
+│   └── Tool.java
+├── repository/                    — Spring Data JPA repositories
+├── service/
+│   ├── AgentService.java
+│   ├── FlowService.java           — includes publish graph_json validation
+│   ├── ToolService.java
+│   ├── IamProxyService.java       — IAM proxy (public + bearer clients)
+│   ├── AihubProxyService.java     — AIHub proxy
+│   ├── DatahubProxyService.java   — DataHub proxy
+│   └── OrchestratorProxyService.java — Orchestrator proxy (+ async SSE streaming)
+└── api/
+    ├── agent/                     — AgentController, AgentDto, CreateAgentRequest, UpdateAgentRequest
+    ├── flow/                      — FlowController, FlowVersionController, DTOs
+    ├── tool/                      — ToolController, DTOs
+    └── bff/
+        ├── iam/
+        │   ├── IamAuthController.java
+        │   └── IamTenantController.java
+        ├── aihub/
+        │   └── AihubProxyController.java
+        ├── datahub/
+        │   └── DatahubProxyController.java
+        └── orchestrator/
+            ├── OrchestratorThreadController.java
+            └── OrchestratorRunController.java
+```

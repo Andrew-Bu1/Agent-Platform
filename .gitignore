@@ -24,6 +24,9 @@ profile.cov
 # env file
 .env
 
+# Local seed data (contains plaintext passwords — never commit)
+seed.sql
+
 # Editor/IDE
 # .idea/
 # .vscode/
@@ -45,9 +48,16 @@ buildNumber.properties
 # Maven wrapper (optional to keep or ignore)
 .mvn/wrapper/maven-wrapper.jar
 
+# Node
+node_modules/
+dist/
+
 # Logs
 *.log
 
 # Spring Boot
 *.pid
 *.pid.lock
+
+.vscode/
+

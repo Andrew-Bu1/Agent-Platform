@@ -193,6 +193,14 @@ CREATE TABLE IF NOT EXISTS flow_versions (
         UNIQUE (flow_id, version)
 );
 
+-- FK deferred because flows is created before flow_versions exists
+ALTER TABLE flows
+    ADD CONSTRAINT fk_flows_current_version
+        FOREIGN KEY (current_version_id)
+        REFERENCES flow_versions(id)
+        ON DELETE SET NULL
+        DEFERRABLE INITIALLY DEFERRED;
+
 
 
 
@@ -230,7 +238,7 @@ CREATE TABLE IF NOT EXISTS runs (
 
     thread_id UUID NULL REFERENCES threads(id) ON DELETE SET NULL,
 
-    flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE RESTRICT,
+    flow_id UUID NULL REFERENCES flows(id) ON DELETE SET NULL,
     flow_version_id UUID NOT NULL REFERENCES flow_versions(id) ON DELETE RESTRICT,
 
     status VARCHAR(50) NOT NULL DEFAULT 'pending',
@@ -359,7 +367,7 @@ CREATE TABLE IF NOT EXISTS run_events (
     run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
     node_run_id UUID NULL REFERENCES node_runs(id) ON DELETE SET NULL,
 
-    sequence_no BIGINT NOT NULL,
+    sequence_no BIGSERIAL NOT NULL,
 
     event_type VARCHAR(100) NOT NULL,
     -- RunStarted
@@ -429,4 +437,38 @@ CREATE TABLE IF NOT EXISTS human_review_tasks (
     completed_at TIMESTAMPTZ NULL,
     due_at TIMESTAMPTZ NULL
 );
+
+
+-- INDEXES
+
+CREATE INDEX idx_runs_status
+    ON runs(tenant_id, workspace_id, status);
+
+CREATE INDEX idx_runs_thread_id
+    ON runs(thread_id)
+    WHERE thread_id IS NOT NULL;
+
+CREATE INDEX idx_node_runs_run_id
+    ON node_runs(run_id);
+
+CREATE INDEX idx_run_events_run_id_seq
+    ON run_events(run_id, sequence_no);
+
+CREATE INDEX idx_messages_thread_id
+    ON messages(thread_id, created_at);
+
+CREATE INDEX idx_human_review_tasks_run_id
+    ON human_review_tasks(run_id);
+
+CREATE INDEX idx_human_review_tasks_status
+    ON human_review_tasks(tenant_id, workspace_id, status);
+
+CREATE INDEX idx_agents_workspace
+    ON agents(tenant_id, workspace_id);
+
+CREATE INDEX idx_tools_workspace
+    ON tools(tenant_id, workspace_id);
+
+CREATE INDEX idx_flows_workspace
+    ON flows(tenant_id, workspace_id);
 

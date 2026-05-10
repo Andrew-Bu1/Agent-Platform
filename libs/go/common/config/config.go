@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 
@@ -71,11 +72,15 @@ func LoadPostgresConfig() *PostgresConfig {
 }
 
 func LoadMinioConfig() *MinioConfig {
+	endpoint := GetEnvString("MINIO_ENDPOINT", "localhost:9000")
+	// minio-go requires host:port with no scheme — strip http:// or https://
+	endpoint = strings.TrimPrefix(endpoint, "https://")
+	endpoint = strings.TrimPrefix(endpoint, "http://")
 	return &MinioConfig{
-		Endpoint:       	GetEnvString("MINIO_ENDPOINT", "localhost:9000"),
-		AccessKeyID:    	GetEnvString("MINIO_ACCESS_KEY_ID", "minioadmin"),
-		SecretAccessKey: 	GetEnvString("MINIO_SECRET_ACCESS_KEY", "minioadmin"),
-		Bucket:			GetEnvString("MINIO_BUCKET", "datahub"),
-		Region:			GetEnvString("MINIO_REGION", "us-east-1"),
+		Endpoint:        endpoint,
+		AccessKeyID:     GetEnvString("MINIO_ACCESS_KEY_ID", "minioadmin"),
+		SecretAccessKey: GetEnvString("MINIO_SECRET_ACCESS_KEY", "minioadmin"),
+		Bucket:          GetEnvString("MINIO_BUCKET", "datahub"),
+		Region:          GetEnvString("MINIO_REGION", "us-east-1"),
 	}
 }
