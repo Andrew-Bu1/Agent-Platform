@@ -1,7 +1,9 @@
 package com.agentplatform.iam.api.oauth;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public record TokenResponse(
-        String accessToken,
-        String tokenType,
-        int expiresIn
+        @JsonProperty("access_token") String accessToken,
+        @JsonProperty("token_type") String tokenType,
+        @JsonProperty("expires_in") int expiresIn
 ) {}

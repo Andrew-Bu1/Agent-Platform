@@ -48,6 +48,7 @@ public class TokenService {
         if (workspaceId != null) {
             custom.put("workspace_id", workspaceId.toString());
         }
+        custom.put("type", "user");
         custom.put("permissions", permissions);
 
         return new JwtClaims(user.getId().toString(), USER_DEFAULT_AUD, custom);
@@ -68,6 +69,7 @@ public class TokenService {
         if (client.getTenantId() != null) {
             custom.put("tenant_id", client.getTenantId().toString());
         }
+        custom.put("type", "service_client");
         custom.put("permissions", permissions);
 
         return new JwtClaims(client.getClientId(), audiences, custom);
