@@ -10,6 +10,7 @@ class ModelConfig:
     provider_key: str       # resolved via JOIN with providers
     model_key: str
     display_name: str
+    description: str | None
     provider_model_id: str  # actual model ID sent to the provider (e.g. "anthropic/claude-3-5-sonnet")
     operation_type: str     # chat | embed | rerank
     task_type: str | None
@@ -40,7 +41,7 @@ class ModelUsageLog:
     cost: Decimal | None = None
     workspace_id: UUID | None = None
     user_id: UUID | None = None
-    service_client_id: str | None = None
+    service_client_id: UUID | None = None
     feature_key: str | None = None
     error_message: str | None = None
     latency_ms: int | None = None

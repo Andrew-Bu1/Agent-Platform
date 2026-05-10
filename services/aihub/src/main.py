@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from common.logger import setup_logging
 from common.postgres import PostgresClient
 from common.redis import RedisClient
+from common.storage import MinioStorage
 from fastapi import FastAPI
 
 from src.adapters.registry import build_registry
@@ -39,6 +40,9 @@ async def lifespan(app: FastAPI):
     providers_repo = ProvidersRepository(pg)
     entitlement_guard = EntitlementGuard(settings.iam.base_url, redis)
 
+    minio = MinioStorage(settings.minio)
+    minio.ensure_bucket()
+
     active_providers = await providers_repo.get_all_active()
     registry = build_registry(
         active_providers,
@@ -50,7 +54,9 @@ async def lifespan(app: FastAPI):
     app.state.model_usage_log_repo = model_usage_log_repo
     app.state.providers_repo = providers_repo
     app.state.jwks_cache = jwks_cache
+    app.state.iam_config = settings.iam
     app.state.provider_encryption_key = settings.provider.encryption_key
+    app.state.minio = minio
     app.state.service_router = ServiceRouter(
         model_config_repo=model_config_repo,
         model_usage_log_repo=model_usage_log_repo,

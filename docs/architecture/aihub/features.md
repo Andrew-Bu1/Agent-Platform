@@ -44,6 +44,7 @@ Returns a single provider.
   "provider_key": "openrouter",
   "display_name": "OpenRouter",
   "description": "Multi-model API gateway",
+  "logo_url": "https://openrouter.ai/favicon.ico",
   "base_url": "https://openrouter.ai/api/v1",
   "adapter_type": "openai_compatible",
   "sort_order": 1
@@ -51,11 +52,11 @@ Returns a single provider.
 ```
 
 `adapter_type` determines which code adapter is used:
-- `openai_compatible` — any provider that follows the OpenAI chat completions format (OpenRouter, OpenAI, Together AI, Groq, Mistral, etc.). The API key is read from `PROVIDER_{UPPER_KEY}_API_KEY` on startup.
+- `openai_compatible` — any provider that follows the OpenAI chat completions format (OpenRouter, OpenAI, Together AI, Groq, Mistral, etc.). The API key is stored encrypted in `config_json` and decrypted at startup using `PROVIDER_ENCRYPTION_KEY`.
 - `local` — models loaded in-process via SentenceTransformer (embed) or CrossEncoder (rerank).
 
 ### `PATCH /v1/providers/{id}` — Update provider
-Allows updating `display_name`, `description`, `base_url`, `adapter_type`, `is_active`, `sort_order`.
+Allows updating `display_name`, `description`, `logo_url`, `base_url`, `adapter_type`, `is_active`, `sort_order`.
 
 ### `DELETE /v1/providers/{id}` — Delete provider
 Returns 409 if model configs reference this provider (FK constraint).
@@ -85,6 +86,7 @@ Query params: `operation_type` (chat|embed|rerank), `provider_key`.
   "provider_key": "openrouter",
   "model_key": "claude-3-5-sonnet",
   "display_name": "Claude 3.5 Sonnet",
+  "description": "Anthropic Claude 3.5 Sonnet via OpenRouter",
   "provider_model_id": "anthropic/claude-3-5-sonnet",
   "operation_type": "chat",
   "supports_streaming": true,
@@ -103,7 +105,7 @@ Query params: `operation_type` (chat|embed|rerank), `provider_key`.
 - `endpoint_url` overrides the provider's `base_url` for this specific model.
 
 ### `PATCH /v1/models/{id}` — Update model config
-Mutable fields: `display_name`, `endpoint_url`, `input_cost`, `output_cost`, `context_window_tokens`, `max_output_tokens`, `supports_*` flags, `is_active`.
+Mutable fields: `display_name`, `description`, `endpoint_url`, `input_cost`, `output_cost`, `context_window_tokens`, `max_output_tokens`, `supports_*` flags, `is_active`.
 
 ### `DELETE /v1/models/{id}` — Delete model config
 Returns 409 if usage logs reference this model (FK constraint).
@@ -205,7 +207,7 @@ Every inference request (chat, embed, rerank) goes through `EntitlementGuard` **
 
 ### Pre-call checks (in order)
 
-1. **Entitlement exists** — tenant must have an entitlement row for `(model_key, operation_type)`. If not → 403.
+1. **Entitlement exists and is allowed** — tenant must have an entitlement row for `(model_key, operation_type)` with `allowed=true`. Missing row or `allowed=false` → 403.
 2. **RPM limit** — Redis `INCR aihub:rpm:{tenant_id}:{model_key}:{op}` with 60 s TTL. Count is incremented *before* the call so in-flight requests count. If count exceeds limit → 429.
 3. **TPM limit** — reads current minute bucket from Redis. If at or above limit → 429.
 4. **Daily token limit** — reads current UTC day bucket from Redis. If at or above limit → 429.

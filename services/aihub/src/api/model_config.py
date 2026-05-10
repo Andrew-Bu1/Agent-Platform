@@ -6,15 +6,23 @@ from pydantic import BaseModel
 
 from common.logger import get_logger
 
-from src.api.dependencies import get_model_config_repo, get_providers_repo
+from src.api.dependencies import get_caller_context, get_model_config_repo, get_providers_repo
+from src.models.auth import CallerContext
 from src.repositories.model_config import ModelConfigRepository
 from src.repositories.providers import ProvidersRepository
+
+
+def _require_model_manage(ctx: CallerContext) -> None:
+    """Raise 403 unless the caller holds the model:manage permission."""
+    if "model:manage" not in ctx.permissions:
+        raise HTTPException(status_code=403, detail="model:manage permission required")
 
 
 class ModelConfigCreate(BaseModel):
     provider_key: str       # e.g. "openrouter", "self-host"
     model_key: str          # our internal key, e.g. "claude-3-5-sonnet"
     display_name: str
+    description: str | None = None
     provider_model_id: str  # actual model ID at provider, e.g. "anthropic/claude-3-5-sonnet"
     operation_type: str     # chat | embed | rerank
     task_type: str | None = None
@@ -32,6 +40,7 @@ class ModelConfigCreate(BaseModel):
 
 class ModelConfigUpdate(BaseModel):
     display_name: str | None = None
+    description: str | None = None
     endpoint_url: str | None = None
     input_cost: Decimal | None = None
     output_cost: Decimal | None = None
@@ -69,9 +78,11 @@ def router() -> APIRouter:
     @r.post("", status_code=201)
     async def create_model_config(
         body: ModelConfigCreate,
+        ctx: CallerContext = Depends(get_caller_context),
         repo: ModelConfigRepository = Depends(get_model_config_repo),
         providers_repo: ProvidersRepository = Depends(get_providers_repo),
     ):
+        _require_model_manage(ctx)
         provider_id = await providers_repo.get_id_by_key(body.provider_key)
         if provider_id is None:
             raise HTTPException(status_code=404, detail=f"Provider '{body.provider_key}' not found")
@@ -82,6 +93,7 @@ def router() -> APIRouter:
             provider_id=provider_id,
             model_key=body.model_key,
             display_name=body.display_name,
+            description=body.description,
             provider_model_id=body.provider_model_id,
             operation_type=body.operation_type,
             task_type=body.task_type,
@@ -101,11 +113,14 @@ def router() -> APIRouter:
     async def update_model_config(
         id: UUID,
         body: ModelConfigUpdate,
+        ctx: CallerContext = Depends(get_caller_context),
         repo: ModelConfigRepository = Depends(get_model_config_repo),
     ):
+        _require_model_manage(ctx)
         config = await repo.update(
             id=id,
             display_name=body.display_name,
+            description=body.description,
             endpoint_url=body.endpoint_url,
             input_cost=body.input_cost,
             output_cost=body.output_cost,
@@ -124,8 +139,10 @@ def router() -> APIRouter:
     @r.delete("/{id}", status_code=204)
     async def delete_model_config(
         id: UUID,
+        ctx: CallerContext = Depends(get_caller_context),
         repo: ModelConfigRepository = Depends(get_model_config_repo),
     ):
+        _require_model_manage(ctx)
         deleted = await repo.delete(id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Model config not found")

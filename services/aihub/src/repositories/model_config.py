@@ -11,6 +11,7 @@ _SELECT = """
         p.provider_key,
         mc.model_key,
         mc.display_name,
+        mc.description,
         mc.provider_model_id,
         mc.operation_type,
         mc.task_type,
@@ -38,6 +39,7 @@ def _row_to_model(row) -> ModelConfig:
         provider_key=row["provider_key"],
         model_key=row["model_key"],
         display_name=row["display_name"],
+        description=row["description"],
         provider_model_id=row["provider_model_id"],
         operation_type=row["operation_type"],
         task_type=row["task_type"],
@@ -61,10 +63,13 @@ class ModelConfigRepository:
     def __init__(self, db: PostgresClient) -> None:
         self._db = db
 
-    async def get_by_model_key(self, model_key: str) -> ModelConfig | None:
+    async def get_by_model_key_and_operation(
+        self, model_key: str, operation_type: str
+    ) -> ModelConfig | None:
         rows = await self._db.fetch(
-            f"{_SELECT} WHERE mc.model_key = $1 AND mc.is_active = TRUE",
+            f"{_SELECT} WHERE mc.model_key = $1 AND mc.operation_type = $2 AND mc.is_active = TRUE",
             model_key,
+            operation_type,
         )
         return _row_to_model(rows[0]) if rows else None
 
@@ -101,6 +106,7 @@ class ModelConfigRepository:
         display_name: str,
         provider_model_id: str,
         operation_type: str,
+        description: str | None = None,
         task_type: str | None = None,
         endpoint_url: str | None = None,
         input_cost: Decimal | None = None,
@@ -116,20 +122,20 @@ class ModelConfigRepository:
         await self._db.execute(
             """
             INSERT INTO model_configs (
-                id, provider_id, model_key, display_name, provider_model_id,
+                id, provider_id, model_key, display_name, description, provider_model_id,
                 operation_type, task_type, endpoint_url,
                 input_cost, output_cost,
                 context_window_tokens, max_output_tokens, embedding_dimensions,
                 supports_streaming, supports_tools, supports_json_mode, supports_vision
             ) VALUES (
                 $1, $2, $3, $4, $5,
-                $6, $7, $8,
-                $9, $10,
-                $11, $12, $13,
-                $14, $15, $16, $17
+                $6, $7, $8, $9,
+                $10, $11,
+                $12, $13, $14,
+                $15, $16, $17, $18
             )
             """,
-            id, provider_id, model_key, display_name, provider_model_id,
+            id, provider_id, model_key, display_name, description, provider_model_id,
             operation_type, task_type, endpoint_url,
             input_cost, output_cost,
             context_window_tokens, max_output_tokens, embedding_dimensions,
@@ -143,6 +149,7 @@ class ModelConfigRepository:
         self,
         id: UUID,
         display_name: str | None = None,
+        description: str | None = None,
         endpoint_url: str | None = None,
         input_cost: Decimal | None = None,
         output_cost: Decimal | None = None,
@@ -159,6 +166,7 @@ class ModelConfigRepository:
 
         for col, val in [
             ("display_name", display_name),
+            ("description", description),
             ("endpoint_url", endpoint_url),
             ("input_cost", input_cost),
             ("output_cost", output_cost),

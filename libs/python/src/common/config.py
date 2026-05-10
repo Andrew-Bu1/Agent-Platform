@@ -44,3 +44,17 @@ class RedisConfig(BaseSettings):
     def url(self) -> str:
         """Construct the Redis connection URL."""
         return f"redis://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
+
+
+class MinioConfig(BaseSettings):
+    """MinIO object storage configuration."""
+    model_config = SettingsConfigDict(env_prefix="MINIO_", env_file=".env", extra="ignore")
+
+    endpoint: str = "localhost:9000"
+    access_key: str = "minioadmin"
+    secret_key: str = "minioadmin"
+    bucket: str = "default"
+    secure: bool = False
+    # Public base URL used to build object URLs returned to callers.
+    # In production set this to your CDN or reverse-proxy URL.
+    public_url: str = "http://localhost:9000"

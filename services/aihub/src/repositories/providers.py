@@ -4,11 +4,11 @@ from uuid import UUID
 from common.postgres import PostgresClient
 
 _SELECT_FULL = (
-    "SELECT id, provider_key, display_name, description, base_url, adapter_type, "
+    "SELECT id, provider_key, display_name, description, logo_url, base_url, adapter_type, "
     "config_json, is_active, sort_order, created_at, updated_at FROM providers"
 )
 _SELECT_LIST = (
-    "SELECT id, provider_key, display_name, description, base_url, adapter_type, "
+    "SELECT id, provider_key, display_name, description, logo_url, base_url, adapter_type, "
     "config_json, is_active, sort_order, created_at, updated_at "
     "FROM providers ORDER BY sort_order ASC, display_name ASC"
 )
@@ -78,6 +78,7 @@ class ProvidersRepository:
         provider_key: str,
         display_name: str,
         description: str | None,
+        logo_url: str | None,
         base_url: str | None,
         adapter_type: str,
         sort_order: int,
@@ -87,12 +88,12 @@ class ProvidersRepository:
         rows = await self._db.fetch(
             """
             INSERT INTO providers
-                (id, provider_key, display_name, description, base_url, adapter_type, sort_order, config_json)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, provider_key, display_name, description, base_url, adapter_type,
+                (id, provider_key, display_name, description, logo_url, base_url, adapter_type, sort_order, config_json)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, provider_key, display_name, description, logo_url, base_url, adapter_type,
                       config_json, is_active, sort_order, created_at, updated_at
             """,
-            id, provider_key, display_name, description, base_url, adapter_type, sort_order,
+            id, provider_key, display_name, description, logo_url, base_url, adapter_type, sort_order,
             json.dumps(config_json),
         )
         return _to_public(dict(rows[0]))
@@ -103,6 +104,7 @@ class ProvidersRepository:
         *,
         display_name: str | None,
         description: str | None,
+        logo_url: str | None,
         base_url: str | None,
         adapter_type: str | None,
         is_active: bool | None,
@@ -117,6 +119,7 @@ class ProvidersRepository:
         for col, val in [
             ("display_name", display_name),
             ("description", description),
+            ("logo_url", logo_url),
             ("base_url", base_url),
             ("adapter_type", adapter_type),
             ("is_active", is_active),
@@ -139,7 +142,7 @@ class ProvidersRepository:
         sets.append("updated_at = NOW()")
         sql = (
             f"UPDATE providers SET {', '.join(sets)} WHERE id = $1 "
-            "RETURNING id, provider_key, display_name, description, base_url, adapter_type, "
+            "RETURNING id, provider_key, display_name, description, logo_url, base_url, adapter_type, "
             "config_json, is_active, sort_order, created_at, updated_at"
         )
         rows = await self._db.fetch(sql, *params)

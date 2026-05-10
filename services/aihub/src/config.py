@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from common.config import AppConfig, PostgresConfig, RedisConfig
+from common.config import AppConfig, MinioConfig, PostgresConfig, RedisConfig
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +8,8 @@ class IamConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="IAM_", env_file=".env", extra="ignore")
 
     base_url: str = "http://iam-service:8080"
+    issuer: str = "iam-service"
+    audience: str = "aihub"
 
 
 class ModelConfig(BaseSettings):
@@ -24,6 +26,7 @@ class ProviderConfig(BaseSettings):
     encryption_key: str | None = None
 
 
+
 @dataclass
 class Settings:
     app: AppConfig
@@ -32,6 +35,7 @@ class Settings:
     iam: IamConfig
     model: ModelConfig
     provider: ProviderConfig
+    minio: MinioConfig
 
 
 def load_settings() -> Settings:
@@ -42,4 +46,5 @@ def load_settings() -> Settings:
         iam=IamConfig(),
         model=ModelConfig(),
         provider=ProviderConfig(),
+        minio=MinioConfig(),
     )

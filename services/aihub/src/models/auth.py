@@ -16,5 +16,17 @@ class CallerContext:
         return UUID(self.subject) if self.caller_type == "user" else None
 
     @property
-    def service_client_id(self) -> str | None:
-        return self.subject if self.caller_type == "service_client" else None
+    def service_client_id(self) -> UUID | None:
+        """Return the service client ID as a UUID.
+
+        IAM issues service-client tokens with sub = client.getClientId() which
+        is a UUID string.  The DB column model_usage_logs.service_client_id is
+        also UUID, so we parse here.  Returns None for user tokens or when the
+        subject is not a valid UUID.
+        """
+        if self.caller_type != "service_client":
+            return None
+        try:
+            return UUID(self.subject)
+        except ValueError:
+            return None

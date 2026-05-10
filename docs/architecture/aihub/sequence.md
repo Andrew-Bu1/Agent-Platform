@@ -268,7 +268,7 @@ sequenceDiagram
     Cache-->>EG: entitlement map
     EG->>EG: lookup (model_key, op_type) → Entitlement
 
-    alt no entitlement row
+    alt no entitlement row OR allowed=false
         EG-->>SR: 403 Forbidden
     end
 

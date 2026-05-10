@@ -29,10 +29,15 @@ class ServiceRouter:
         self._entitlement_guard = entitlement_guard
         self._registry = registry
 
-    async def _get_model(self, model_key: str) -> ModelConfig:
-        config = await self._model_config_repo.get_by_model_key(model_key)
+    async def _get_model(self, model_key: str, operation_type: str) -> ModelConfig:
+        config = await self._model_config_repo.get_by_model_key_and_operation(
+            model_key, operation_type
+        )
         if config is None:
-            raise HTTPException(status_code=404, detail=f"Model '{model_key}' not found or is inactive")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model '{model_key}' not found for operation '{operation_type}' or is inactive",
+            )
         return config
 
     async def _log_usage(self, log: ModelUsageLog) -> None:
@@ -78,16 +83,35 @@ class ServiceRouter:
         tools: list | None = None,
         tool_choice: str | dict | None = None,
     ) -> ChatResponse:
-        config = await self._get_model(model_key)
-        await self._entitlement_guard.check_before_call(
-            ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
-        )
+        config = await self._get_model(model_key, "chat")
+        try:
+            await self._entitlement_guard.check_before_call(
+                ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
+            )
+        except HTTPException as exc:
+            await self._log_usage(ModelUsageLog(
+                **self._base_log(config, ctx),
+                latency_ms=0,
+                status="rejected",
+                error_message=exc.detail,
+            ))
+            raise
 
         adapter = self._registry.get_chat(config.provider_key)
         start = time.monotonic()
-        result = await adapter.chat(config, messages, tools=tools, tool_choice=tool_choice)
-        latency_ms = int((time.monotonic() - start) * 1000)
+        try:
+            result = await adapter.chat(config, messages, tools=tools, tool_choice=tool_choice)
+        except Exception as exc:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            await self._log_usage(ModelUsageLog(
+                **self._base_log(config, ctx),
+                latency_ms=latency_ms,
+                status="failed",
+                error_message=str(exc),
+            ))
+            raise
 
+        latency_ms = int((time.monotonic() - start) * 1000)
         input_t = result.usage.prompt_tokens if result.usage else None
         output_t = result.usage.completion_tokens if result.usage else None
         total_t = (input_t or 0) + (output_t or 0)
@@ -115,10 +139,19 @@ class ServiceRouter:
         tools: list | None = None,
         tool_choice: str | dict | None = None,
     ) -> AsyncGenerator[bytes, None]:
-        config = await self._get_model(model_key)
-        await self._entitlement_guard.check_before_call(
-            ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
-        )
+        config = await self._get_model(model_key, "chat")
+        try:
+            await self._entitlement_guard.check_before_call(
+                ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
+            )
+        except HTTPException as exc:
+            await self._log_usage(ModelUsageLog(
+                **self._base_log(config, ctx),
+                latency_ms=0,
+                status="rejected",
+                error_message=exc.detail,
+            ))
+            raise
 
         adapter = self._registry.get_chat(config.provider_key)
         raw = adapter.chat_stream(config, messages, tools=tools, tool_choice=tool_choice)
@@ -133,6 +166,8 @@ class ServiceRouter:
         leftover = ""
         last_usage: dict | None = None
         start = time.monotonic()
+        stream_failed = False
+        error_message: str | None = None
         try:
             async for chunk in raw:
                 yield chunk
@@ -147,6 +182,10 @@ class ServiceRouter:
                                 last_usage = data["usage"]
                         except Exception:
                             pass
+        except Exception as exc:
+            stream_failed = True
+            error_message = str(exc)
+            raise
         finally:
             latency_ms = int((time.monotonic() - start) * 1000)
             input_t = last_usage.get("prompt_tokens") if last_usage else None
@@ -162,7 +201,8 @@ class ServiceRouter:
                 output_tokens=output_t,
                 cost=self._compute_cost(config, input_t, output_t),
                 latency_ms=latency_ms,
-                status="success",
+                status="failed" if stream_failed else "success",
+                error_message=error_message,
             ))
 
     # ── Embed ─────────────────────────────────────────────────────────────────
@@ -173,16 +213,35 @@ class ServiceRouter:
         inputs: list[str],
         ctx: CallerContext,
     ) -> EmbedResponse:
-        config = await self._get_model(model_key)
-        await self._entitlement_guard.check_before_call(
-            ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
-        )
+        config = await self._get_model(model_key, "embed")
+        try:
+            await self._entitlement_guard.check_before_call(
+                ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
+            )
+        except HTTPException as exc:
+            await self._log_usage(ModelUsageLog(
+                **self._base_log(config, ctx),
+                latency_ms=0,
+                status="rejected",
+                error_message=exc.detail,
+            ))
+            raise
 
         adapter = self._registry.get_embed(config.provider_key)
         start = time.monotonic()
-        result = await adapter.embed(config, inputs)
-        latency_ms = int((time.monotonic() - start) * 1000)
+        try:
+            result = await adapter.embed(config, inputs)
+        except Exception as exc:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            await self._log_usage(ModelUsageLog(
+                **self._base_log(config, ctx),
+                latency_ms=latency_ms,
+                status="failed",
+                error_message=str(exc),
+            ))
+            raise
 
+        latency_ms = int((time.monotonic() - start) * 1000)
         total_t = result.usage.total_tokens or 0 if result.usage else 0
         await self._entitlement_guard.record_usage(
             ctx.tenant_id, config.model_key, config.operation_type, total_t
@@ -205,16 +264,35 @@ class ServiceRouter:
         top_n: int | None,
         ctx: CallerContext,
     ) -> RerankResponse:
-        config = await self._get_model(model_key)
-        await self._entitlement_guard.check_before_call(
-            ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
-        )
+        config = await self._get_model(model_key, "rerank")
+        try:
+            await self._entitlement_guard.check_before_call(
+                ctx.tenant_id, config.model_key, config.operation_type, ctx.bearer_token
+            )
+        except HTTPException as exc:
+            await self._log_usage(ModelUsageLog(
+                **self._base_log(config, ctx),
+                latency_ms=0,
+                status="rejected",
+                error_message=exc.detail,
+            ))
+            raise
 
         adapter = self._registry.get_rerank(config.provider_key)
         start = time.monotonic()
-        result = await adapter.rerank(config, query, documents, top_n)
-        latency_ms = int((time.monotonic() - start) * 1000)
+        try:
+            result = await adapter.rerank(config, query, documents, top_n)
+        except Exception as exc:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            await self._log_usage(ModelUsageLog(
+                **self._base_log(config, ctx),
+                latency_ms=latency_ms,
+                status="failed",
+                error_message=str(exc),
+            ))
+            raise
 
+        latency_ms = int((time.monotonic() - start) * 1000)
         await self._entitlement_guard.record_usage(
             ctx.tenant_id, config.model_key, config.operation_type, len(documents)
         )

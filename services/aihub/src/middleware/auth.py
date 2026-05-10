@@ -59,8 +59,15 @@ async def get_caller_context(
     if public_key is None:
         raise HTTPException(status_code=401, detail="Unknown signing key")
 
+    iam_cfg = request.app.state.iam_config
     try:
-        claims = jwt.decode(token, public_key, algorithms=["RS256"])
+        claims = jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            audience=iam_cfg.audience,
+            issuer=iam_cfg.issuer,
+        )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError as e:

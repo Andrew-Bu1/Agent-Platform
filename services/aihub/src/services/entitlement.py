@@ -97,7 +97,7 @@ class EntitlementGuard:
         entitlements = await self._cache.get(tenant_id, bearer_token)
         ent = entitlements.get((model_key, operation_type))
 
-        if ent is None:
+        if ent is None or not ent.allowed:
             raise HTTPException(
                 status_code=403,
                 detail=f"Tenant is not entitled to use model '{model_key}' for '{operation_type}'",

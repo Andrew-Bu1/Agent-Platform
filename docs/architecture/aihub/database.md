@@ -7,6 +7,7 @@ erDiagram
         VARCHAR100  provider_key    "UNIQUE — openrouter, openai, local, etc."
         VARCHAR255  display_name
         TEXT        description     "nullable"
+        TEXT        logo_url        "nullable — provider logo for UI display"
         TEXT        base_url        "nullable — provider API base URL"
         VARCHAR50   adapter_type    "openai_compatible | local"
         JSONB       config_json     "encrypted api_key stored here"
@@ -21,7 +22,7 @@ erDiagram
         UUID        provider_id             FK
         VARCHAR150  model_key               "UNIQUE with operation_type — internal lookup key"
         VARCHAR255  display_name
-        TEXT        description             "nullable"
+        TEXT        description             "nullable — human-readable model description"
         VARCHAR255  provider_model_id       "actual model ID sent to provider"
         VARCHAR50   operation_type          "chat | embed | rerank"
         VARCHAR100  task_type               "nullable"
