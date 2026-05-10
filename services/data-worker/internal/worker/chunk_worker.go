@@ -116,10 +116,12 @@ func (w *ChunkWorker) process(ctx context.Context, job model.ChunkingJob) error 
 			"document_id":    job.DocumentID,
 		})
 
-		// Persist the chunk.
+		// Persist the chunk. ON CONFLICT makes replayed chunk jobs idempotent:
+		// if an earlier run already wrote this index, the row is silently kept.
 		_, err := w.db.Exec(ctx, `
 			INSERT INTO chunks (id, tenant_id, workspace_id, document_id, ingestion_id, chunk_index, content, metadata, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT (tenant_id, workspace_id, ingestion_id, chunk_index) DO NOTHING`,
 			chunkID, job.TenantID, job.WorkspaceID, job.DocumentID, job.IngestionID, ch.Index, ch.Content, meta, now, now,
 		)
 		if err != nil {
@@ -127,7 +129,9 @@ func (w *ChunkWorker) process(ctx context.Context, job model.ChunkingJob) error 
 		}
 
 		// Enqueue for embedding.
-		embedJob := model.EmbedJob{			IngestionID:    job.IngestionID,			ChunkID:        chunkID.String(),
+		embedJob := model.EmbedJob{
+			IngestionID:    job.IngestionID,
+			ChunkID:        chunkID.String(),
 			DatasourceID:   datasourceID,
 			TenantID:       job.TenantID,
 			WorkspaceID:    job.WorkspaceID,
@@ -135,7 +139,7 @@ func (w *ChunkWorker) process(ctx context.Context, job model.ChunkingJob) error 
 			EmbeddingModel: job.EmbeddingModel,
 		}
 		if err := w.q.Push(ctx, w.embeddingQueue, embedJob); err != nil {
-			log.Printf("[ChunkWorker] warn: push embed job chunk_id=%s: %v", chunkID, err)
+			return fmt.Errorf("push embed job chunk_id=%s: %w", chunkID, err)
 		}
 	}
 

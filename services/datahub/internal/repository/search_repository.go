@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -10,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrUnsupportedDimension = errors.New("unsupported vector dimension")
 
 // embeddingDimTable maps vector dimension → postgres table name (must match data-worker).
 var embeddingDimTable = map[int]string{
@@ -36,7 +39,7 @@ func (r *SearchRepository) SearchByVector(
 ) ([]*model.VectorSearchResult, error) {
 	table, ok := embeddingDimTable[len(vector)]
 	if !ok {
-		return nil, fmt.Errorf("unsupported vector dimension %d", len(vector))
+		return nil, fmt.Errorf("%w: %d", ErrUnsupportedDimension, len(vector))
 	}
 
 	// Build pgvector literal: '[0.1,0.2,...]'

@@ -101,7 +101,8 @@ func (w *IngestionWorker) process(ctx context.Context, job model.IngestionJob) e
 		return err
 	}
 	if text == "" {
-		log.Printf("[IngestionWorker] warn: empty text extracted from %s", job.StoragePath)
+		log.Printf("[IngestionWorker] warn: empty text extracted from %s — marking completed", job.StoragePath)
+		w.setIngestionStatus(ctx, job.IngestionID, "completed")
 		return nil
 	}
 

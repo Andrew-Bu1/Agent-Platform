@@ -74,15 +74,13 @@ func (h *IngestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.ChunkConfig == nil {
-		writeError(w, http.StatusBadRequest, "chunk_config is required")
-		return
-	} 
-
-	chunkConfig, err := json.Marshal(req.ChunkConfig)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid chunk_config")
-		return
+	var chunkConfig json.RawMessage
+	if req.ChunkConfig != nil {
+		chunkConfig, err = json.Marshal(req.ChunkConfig)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid chunk_config")
+			return
+		}
 	}
 	
 

@@ -23,7 +23,7 @@ Uniqueness is enforced at the `(tenant_id, workspace_id, name)` level — two wo
 
 A **document** is a single uploaded file associated with a datasource. It carries the file's storage path in MinIO, a SHA-256 content hash for deduplication, and arbitrary JSON metadata for downstream use.
 
-- **Upload (`multipart/form-data`)** — the handler reads the file bytes from the form, computes a SHA-256 hash, checks for an existing document with the same hash in the same datasource (`FindByHash`), and rejects with `409 Conflict` if a duplicate is found. On success, the file is uploaded to MinIO at path `<datasource_id>/<filename>` and the document record is persisted to `documents`.
+- **Upload (`multipart/form-data`)** — the handler reads the file bytes (hard cap: 100 MB; returns `413` if exceeded) from the form, computes a SHA-256 hash, checks for an existing document with the same hash in the same datasource (`FindByHash`), and rejects with `409 Conflict` if a duplicate is found. On success, the file is uploaded to MinIO at path `<datasource_id>/<document_id>/<filename>` (document ID in the path prevents same-named files from overwriting each other) and the document record is persisted to `documents`.
 - **List by datasource** — returns all documents belonging to a given datasource within the caller's tenant/workspace scope.
 - **Get by ID** — retrieves a single document record.
 - **Update** — allows modifying the `storage_path` (e.g., after a file migration) or `metadata` JSON.
@@ -33,7 +33,7 @@ A **document** is a single uploaded file associated with a datasource. It carrie
 
 An **ingestion** represents one processing run of a document: it pairs the document with a chunking strategy, a chunking config, and an embedding model. The same document can be ingested multiple times with different strategies or models.
 
-- **Create (→ 202 Accepted)** — validates that `chunk_strategy` is one of `fixed_size`, `recursive_split`, or `semantic_chunking`; that `embedding_model` is non-empty; and that `chunk_config` is valid JSON. It inserts an ingestion record with `status = pending`, then publishes an `IngestionJob` to the Redis ingestion queue via `RPush`. Returns `202 Accepted` immediately — processing is asynchronous.
+- **Create (→ 202 Accepted)** — validates that `chunk_strategy` is one of `fixed_size`, `recursive_split`, or `semantic_chunking` and that `embedding_model` is non-empty. `chunk_config` is optional — when omitted, each strategy applies its own defaults (size=512, overlap=50 for fixed/recursive; maxSize=1024, threshold=0.4 for semantic). It inserts an ingestion record with `status = pending`, then publishes an `IngestionJob` to the Redis ingestion queue via `RPush`. Returns `202 Accepted` immediately — processing is asynchronous.
 - **List by document** — returns all ingestion runs for a given document.
 - **Get by ID** — retrieves a single ingestion record and its current status.
 - **Delete** — removes the ingestion; cascades to chunks and embeddings.
@@ -92,7 +92,7 @@ Responsible for splitting the extracted text into chunks and recording them in t
 - Instantiates the correct chunker based on `chunk_strategy`:
   - **`fixed_size`** — splits text by rune count using `ChunkSize` runes per chunk and `ChunkOverlap` runes of overlap between adjacent chunks. Defaults: size=512, overlap=50.
   - **`recursive_split`** — recursively splits by a prioritised list of separators (`\n\n`, `\n`, `. `, ` `, `""`). Pieces still larger than `ChunkSize` are re-split with the next separator. Small pieces are merged with overlap. Defaults: size=512, overlap=50, standard separators.
-  - **`semantic_chunking`** — splits into sentences, then merges adjacent sentences whose TF-weighted bag-of-words cosine similarity exceeds `SimilarityThreshold`, as long as the merged size stays within `MaxChunkSize`. Defaults: maxSize=1000, threshold=0.5.
+  - **`semantic_chunking`** — splits into sentences, then merges adjacent sentences whose TF-weighted bag-of-words cosine similarity exceeds `SimilarityThreshold`, as long as the merged size stays within `MaxChunkSize`. Defaults: maxSize=1024, threshold=0.4.
 - If the text produces **zero chunks** (e.g., blank document), marks ingestion as `completed` immediately and exits.
 - Otherwise, sets a Redis counter `datahub:embed:remaining:<ingestion_id> = N` **before** pushing any embed jobs (avoids a race where all embeds complete before the counter is visible).
 - For each chunk: inserts a row into `chunks` (with `chunk_index`, `content`, JSON metadata) and pushes an `EmbedJob` to `datahub:queue:embedding`.
@@ -104,15 +104,15 @@ Responsible for splitting the extracted text into chunks and recording them in t
 Responsible for generating embeddings via AIHub and storing them in the appropriate pgvector table.
 
 - Polls `datahub:queue:embedding` via `BLPop`.
-- Calls AIHub: `POST {AIHUB_URL}/v1/embed` with `{model, input: [chunk_text]}`. The HTTP client has a 60-second timeout.
+- Calls AIHub: `POST {AIHUB_URL}/v1/embed` with `{model, input: [chunk_text]}` and a Bearer token obtained from IAM using `client_credentials`. The HTTP client has a 60-second timeout.
 - Determines the target table from the vector dimension returned:
   - 384 → `chunk_384dimension`
   - 768 → `chunk_768dimension`
   - 1024 → `chunk_1024dimension`
   - Any other dimension → error (pushed to DLQ).
 - Inserts the embedding using pgvector's literal syntax (`[f1,f2,...]::vector`) with `ON CONFLICT (id) DO NOTHING` for idempotency.
-- Decrements the Redis counter `datahub:embed:remaining:<ingestion_id>`. When the counter reaches **0**, all chunks for the ingestion have been embedded and the ingestion is updated to **`completed`**.
-- On error: pushes the raw job payload to the DLQ. The ingestion is **not** immediately failed on a single embed error — only the counter increment is skipped, so a re-processed job can still complete it.
+- Decrements the Redis counter `datahub:embed:remaining:<ingestion_id>`. When the counter reaches exactly **0**, all chunks have been embedded and the ingestion is updated to **`completed`**. A negative result means the counter key expired before all embeds ran — in that case completion is skipped and a warning is logged.
+- On any error (AIHub call, DB insert, or Redis decrement): returns an error so the job is sent to the DLQ for replay. The ingestion is **not** immediately failed.
 
 #### 2.4 Dead-Letter Queue
 
@@ -210,14 +210,14 @@ sequenceDiagram
     participant Minio as MinIO
 
     C->>DH: POST /datasources/{datasource_id}/documents<br/>multipart/form-data: file, metadata?
-    DH->>DH: Read file bytes (32 MB limit)<br/>SHA-256(bytes) → fileHash
+    DH->>DH: Read file bytes up to 100 MB (413 if exceeded)<br/>SHA-256(bytes) → fileHash
     DH->>DB: SELECT id FROM documents<br/>WHERE datasource_id=? AND tenant_id=?<br/>AND workspace_id=? AND file_hash=?
     alt Duplicate detected
         DB-->>DH: existing row
         DH-->>C: 409 Conflict "file already exists"
     else New file
         DB-->>DH: no row
-        DH->>Minio: PutObject(bucket, "<datasource_id>/<filename>", bytes)
+        DH->>Minio: PutObject(bucket, "<datasource_id>/<document_id>/<filename>", bytes)
         Minio-->>DH: ok
         DH->>DB: INSERT INTO documents<br/>(id, tenant_id, workspace_id, datasource_id,<br/>name, file_hash, storage_path, metadata)
         DB-->>DH: new row
@@ -238,7 +238,7 @@ sequenceDiagram
     participant Redis as Redis
 
     C->>DH: POST /documents/{document_id}/ingestions<br/>{chunk_strategy, chunk_config, embedding_model}
-    DH->>DH: Validate strategy ∈ {fixed_size, recursive_split, semantic_chunking}<br/>Validate embedding_model non-empty<br/>Validate chunk_config is valid JSON
+    DH->>DH: Validate strategy ∈ {fixed_size, recursive_split, semantic_chunking}<br/>Validate embedding_model non-empty<br/>Validate chunk_config if provided (omit for strategy defaults)
     alt Validation fails
         DH-->>C: 400 Bad Request
     else Valid
@@ -275,9 +275,11 @@ sequenceDiagram
         else Download ok
             Minio-->>IW: file bytes
             IW->>IW: parser.ExtractText(bytes, filename)<br/>.txt → direct<br/>.docx → XML parse word/document.xml
-            alt Parse fails or empty text
+            alt Parse fails
                 IW->>DB: UPDATE ingestions SET status='failed'
                 IW->>Redis: RPush datahub:queue:dlq
+            else Empty text (blank document)
+                IW->>DB: UPDATE ingestions SET status='completed'
             else Text extracted
                 IW->>Redis: RPush datahub:queue:chunking<br/>ChunkingJob{ingestion_id, document_id, tenant_id,<br/>workspace_id, text, chunk_strategy, chunk_config, embedding_model}
             end
@@ -306,7 +308,7 @@ sequenceDiagram
         else N chunks
             CW->>Redis: SET datahub:embed:remaining:<ingestion_id> = N  TTL=24h
             loop for each chunk
-                CW->>DB: INSERT INTO chunks<br/>(id=UUID, tenant_id, workspace_id,<br/>document_id, ingestion_id,<br/>chunk_index, content, metadata)
+                CW->>DB: INSERT INTO chunks<br/>(id=UUID, tenant_id, workspace_id,<br/>document_id, ingestion_id,<br/>chunk_index, content, metadata)<br/>ON CONFLICT (tenant_id, workspace_id, ingestion_id, chunk_index) DO NOTHING
                 CW->>Redis: RPush datahub:queue:embedding<br/>EmbedJob{ingestion_id, chunk_id, datasource_id,<br/>tenant_id, workspace_id, content, embedding_model}
             end
             CW->>DB: UPDATE ingestions SET status='chunked'
@@ -332,7 +334,7 @@ sequenceDiagram
 
     loop poll every 5s
         Redis-->>EW: BLPop datahub:queue:embedding → EmbedJob
-        EW->>AIHub: POST /v1/embed<br/>{model, input: [chunk_text]}
+        EW->>AIHub: POST /v1/embed<br/>Authorization: Bearer <m2m-token><br/>{model, input: [chunk_text]}
         alt AIHub error / timeout (60s)
             AIHub-->>EW: error
             EW->>Redis: RPush datahub:queue:dlq
@@ -370,16 +372,24 @@ sequenceDiagram
 
     C->>DH: POST /datasources/{id}/search<br/>Authorization: Bearer <token><br/>{vector: [...], topK: 10}
     DH->>DH: Extract tenantId + workspaceId from JWT
-    DH->>DB: SELECT id FROM datasources<br/>WHERE id=? AND tenant_id=? AND workspace_id=?
-    alt Datasource not found
-        DB-->>DH: no row
-        DH-->>C: 404 Not Found
-    else Found
-        DB-->>DH: row
-        DH->>DH: dim = len(vector) → select table
-        DH->>DB: SELECT chunk_id, content,<br/>(1-(embedding <=> $vector)) AS score<br/>FROM chunk_<dim>dimension<br/>WHERE datasource_id=? AND tenant_id=? AND workspace_id=?<br/>ORDER BY embedding <=> $vector<br/>LIMIT topK
-        DB-->>DH: [{chunk_id, content, score}, ...]
-        DH-->>C: 200 OK [{chunk_id, content, score}, ...]
+    alt Empty vector
+        DH-->>C: 400 Bad Request "vector must not be empty"
+    else Vector present
+        DH->>DB: SELECT id FROM datasources<br/>WHERE id=? AND tenant_id=? AND workspace_id=?
+        alt Datasource not found
+            DB-->>DH: no row
+            DH-->>C: 404 Not Found
+        else Found
+            DB-->>DH: row
+            DH->>DH: dim = len(vector) → select table<br/>(384 / 768 / 1024 supported)
+            alt Unsupported dimension
+                DH-->>C: 400 Bad Request "unsupported vector dimension"
+            else Supported
+                DH->>DB: SELECT chunk_id, content,<br/>(1-(embedding <=> $vector)) AS score<br/>FROM chunk_<dim>dimension<br/>WHERE datasource_id=? AND tenant_id=? AND workspace_id=?<br/>ORDER BY embedding <=> $vector<br/>LIMIT topK
+                DB-->>DH: [{chunk_id, content, score}, ...]
+                DH-->>C: 200 OK [{chunk_id, content, score}, ...]
+            end
+        end
     end
 ```
 
@@ -446,84 +456,6 @@ sequenceDiagram
     DH-->>C: [{chunk_id, content, score}]
 ```
 
-        DocRepo-->>DocSvc: DocumentResponse
-        DocSvc-->>DH: DocumentResponse
-        DH-->>C: 201 DocumentResponse
-    end
-```
-
-## Trigger Ingestion
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant C as Client
-    participant DH as DataHub API
-    participant IngSvc as IngestionService
-    participant IngRepo as IngestionRepository
-    participant DocRepo as DocumentRepository
-    participant DB as PostgreSQL
-    participant Redis as Redis Queue
-
-    C->>DH: POST /documents/{document_id}/ingestions<br/>{chunk_strategy, chunk_config, embedding_model}
-    DH->>IngSvc: CreateIngestion(document_id, req)
-    IngSvc->>DocRepo: GetByID(document_id)
-    DocRepo->>DB: SELECT * FROM document WHERE id=?
-    DB-->>DocRepo: document (storage_path, ...)
-    DocRepo-->>IngSvc: document
-
-    IngSvc->>IngRepo: Insert(ingestion{status="pending"})
-    IngRepo->>DB: INSERT INTO ingestion
-    DB-->>IngRepo: ingestion row
-    IngRepo-->>IngSvc: IngestionResponse
-
-    IngSvc->>Redis: RPUSH <REDIS_INGESTION_QUEUE><br/>ChunkJob{ingestion_id, document_id,<br/>storage_path, chunk_strategy,<br/>chunk_config, embedding_model}
-
-    alt Queue success
-        Redis-->>IngSvc: ok
-        IngSvc-->>DH: IngestionResponse (status=pending)
-        DH-->>C: 202 Accepted
-    else Queue failure
-        Redis-->>IngSvc: error
-        IngSvc->>IngRepo: UpdateStatus(id, "pending")
-        IngSvc-->>DH: error
-        DH-->>C: 500 Internal Server Error
-    end
-```
-
-## Async Ingestion Processing (data-worker)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Redis as Redis Queue
-    participant DW as data-worker
-    participant Minio as MinIO
-    participant AH as AIHub<br/>/v1/embed
-    participant DB as PostgreSQL
-
-    loop consume forever
-        DW->>Redis: BLPOP <queue_key>
-        Redis-->>DW: ChunkJob JSON
-        DW->>DW: parse ChunkJob
-        DW->>DB: UPDATE ingestion SET status='processing'
-        DW->>Minio: GetObject(storage_path)
-        Minio-->>DW: file bytes
-        DW->>DW: split into chunks<br/>(chunk_strategy + chunk_config)
-        loop each chunk
-            DW->>AH: POST /v1/embed {model, input: chunk.content}
-            AH-->>DW: EmbedResponse {embedding vector}
-            DW->>DB: INSERT INTO chunk {content, chunk_index, ...}
-            DW->>DB: INSERT INTO chunk_Ndimension {chunk_id, embedding}
-        end
-        alt All chunks successful
-            DW->>DB: UPDATE ingestion SET status='completed'
-        else Error
-            DW->>DB: UPDATE ingestion SET status='failed'
-        end
-    end
-```
-
 ## Datasource CRUD
 
 ```mermaid
@@ -582,3 +514,19 @@ sequenceDiagram
     DB-->>ChunkRepo: chunk row
     DH-->>C: 200 ChunkResponse
 ```
+
+---
+
+## Known Limitations
+
+### Upload size limit — 100 MB hard cap
+
+Files are read via `io.LimitReader(file, 100 MB + 1)`. Any upload exceeding 100 MB is rejected with `413 Request Entity Too Large` before reaching MinIO or the database.
+
+### Redis list queue has no at-least-once delivery (Medium)
+
+All three workers consume jobs via `BLPop`, which removes the job from the list **before** processing completes. A worker crash between pop and completion permanently loses the job; only errors caught within the worker reach the DLQ. For production at-least-once semantics, migrate to **Redis Streams consumer groups** (`XREADGROUP` / `XACK`): unacknowledged messages are re-deliverable via `XAUTOCLAIM` after a configurable timeout, and the DLQ pattern is preserved for poison messages.
+
+### Handlers perform authentication but not authorization (Medium)
+
+The JWT middleware extracts and verifies tenant/workspace identity, and the `permissions` claim is present in every token (populated by IAM). However, DataHub handlers (e.g. `datasource_handler.go`, `search_handler.go`) do not check this claim. Any valid token for the correct tenant/workspace can read or write all datasource data regardless of role. To enforce the IAM permission model, add checks against the `permissions` slice from context — for example `datahub:write` before mutations and `datahub:search` before vector search — using a helper like `auth.HasPermission(ctx, "datahub:write")`.

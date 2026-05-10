@@ -14,6 +14,7 @@ import (
 	"services/data-worker/internal/queue"
 
 	"libs/go/common/config"
+	workerauth "services/data-worker/internal/auth"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,12 +36,14 @@ type EmbedWorker struct {
 	aihubURL       string
 	dlqKey         string
 	httpClient     *http.Client
+	tokenProvider  *workerauth.OAuthTokenProvider
 }
 
 func NewEmbedWorker(
 	redisCfg *config.RedisConfig,
 	db *pgxpool.Pool,
 	embeddingQueue, aihubURL, dlqKey string,
+	tokenProvider *workerauth.OAuthTokenProvider,
 ) *EmbedWorker {
 	return &EmbedWorker{
 		q:              queue.NewClient(redisCfg),
@@ -49,6 +52,7 @@ func NewEmbedWorker(
 		aihubURL:       aihubURL,
 		dlqKey:         dlqKey,
 		httpClient:     &http.Client{Timeout: 60 * time.Second},
+		tokenProvider:  tokenProvider,
 	}
 }
 
@@ -97,12 +101,14 @@ func (w *EmbedWorker) process(ctx context.Context, job model.EmbedJob) error {
 	}
 
 	// Insert into the dimension-specific table using pgvector literal syntax.
+	// ON CONFLICT on the natural key (chunk_id, tenant_id, workspace_id) makes
+	// retried jobs idempotent without failing on a duplicate-UUID error.
 	now := time.Now().UTC()
-	_, err = w.db.Exec(ctx,
+	tag, err := w.db.Exec(ctx,
 		fmt.Sprintf(`
 			INSERT INTO %s (id, tenant_id, workspace_id, chunk_id, datasource_id, embedding, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6::vector, $7, $8)
-			ON CONFLICT (id) DO NOTHING`, table),
+			ON CONFLICT (chunk_id, tenant_id, workspace_id) DO NOTHING`, table),
 		uuid.New().String(),
 		job.TenantID,
 		job.WorkspaceID,
@@ -116,6 +122,13 @@ func (w *EmbedWorker) process(ctx context.Context, job model.EmbedJob) error {
 		return fmt.Errorf("insert %s chunk_id=%s: %w", table, job.ChunkID, err)
 	}
 
+	// If the row already existed (retry after a partial failure), skip the
+	// counter decrement to avoid double-counting.
+	if tag.RowsAffected() == 0 {
+		log.Printf("[EmbedWorker] chunk_id=%s already embedded, skipping counter", job.ChunkID)
+		return nil
+	}
+
 	log.Printf("[EmbedWorker] chunk_id=%s → %s (dim=%d)", job.ChunkID, table, dim)
 
 	// Decrement the per-ingestion counter. When it reaches 0, all chunks for
@@ -123,8 +136,13 @@ func (w *EmbedWorker) process(ctx context.Context, job model.EmbedJob) error {
 	counterKey := fmt.Sprintf("datahub:embed:remaining:%s", job.IngestionID)
 	remaining, err := w.q.DecrAndGet(ctx, counterKey)
 	if err != nil {
-		log.Printf("[EmbedWorker] warn: counter decr ingestion_id=%s: %v", job.IngestionID, err)
-	} else if remaining <= 0 {
+		return fmt.Errorf("counter decr ingestion_id=%s: %w", job.IngestionID, err)
+	}
+	if remaining < 0 {
+		// Counter was recreated by Redis DECR after the key expired — do not mark
+		// the ingestion complete based on a stale (now-missing) counter.
+		log.Printf("[EmbedWorker] warn: counter for ingestion_id=%s is negative (%d) — key expired before all embeds ran", job.IngestionID, remaining)
+	} else if remaining == 0 {
 		w.setIngestionStatus(ctx, job.IngestionID, "completed")
 		log.Printf("[EmbedWorker] ingestion_id=%s completed", job.IngestionID)
 	}
@@ -163,6 +181,13 @@ func (w *EmbedWorker) callEmbed(ctx context.Context, modelName, text string) ([]
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if w.tokenProvider != nil && w.tokenProvider.Enabled() {
+		token, err := w.tokenProvider.Token(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("oauth token: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {

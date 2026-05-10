@@ -13,14 +13,15 @@ import (
 // ChunkJob is the payload pushed onto the queue.
 // The data-worker pops this and performs the actual chunking + embedding.
 type ChunkJob struct {
-	IngestionID    uuid.UUID 		`json:"ingestion_id"`
-	DocumentID     uuid.UUID 		`json:"document_id"`
-	TenantID       uuid.UUID		`json:"tenant_id"`
-	WorkspaceID    uuid.UUID		`json:"workspace_id"`
-	StoragePath    string    		`json:"storage_path"`
-	ChunkStrategy  string    		`json:"chunk_strategy"`
-	ChunkConfig    json.RawMessage 	`json:"chunk_config"`
-	EmbeddingModel string    		`json:"embedding_model"`
+	IngestionID    uuid.UUID       `json:"ingestion_id"`
+	DocumentID     uuid.UUID       `json:"document_id"`
+	TenantID       uuid.UUID       `json:"tenant_id"`
+	WorkspaceID    uuid.UUID       `json:"workspace_id"`
+	StoragePath    string          `json:"storage_path"`
+	Filename       string          `json:"filename"`
+	ChunkStrategy  string          `json:"chunk_strategy"`
+	ChunkConfig    json.RawMessage `json:"chunk_config"`
+	EmbeddingModel string          `json:"embedding_model"`
 }
 
 

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"time"
 
 	"libs/go/common/storage"
@@ -36,8 +38,21 @@ func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRe
 		return nil, ErrDuplicateFile
 	}
 
-	// Upload to MinIO: path = <datasource_id>/<filename>
-	objectName := fmt.Sprintf("%s/%s", req.DatasourceID, name)
+	// Default empty metadata to avoid a NULL in the JSON column.
+	metadata := req.Metadata
+	if len(metadata) == 0 {
+		metadata = json.RawMessage(`{}`)
+	}
+
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
+
+	// Include document ID in the path so two files with the same name in the same
+	// datasource never collide. path.Base strips any directory components the client
+	// may have included in the filename.
+	objectName := fmt.Sprintf("%s/%s/%s", req.DatasourceID, id, path.Base(name))
 	storagePath, err := s.minio.UploadFile(ctx, objectName, data)
 	if err != nil {
 		return nil, fmt.Errorf("upload to minio: %w", err)
@@ -45,10 +60,6 @@ func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRe
 
 	now := time.Now().UTC()
 
-	id, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
 	d := &model.Document{
 		ID:           id,
 		TenantID:     tenantID,
@@ -57,12 +68,14 @@ func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRe
 		Name:         name,
 		FileHash:     fileHash,
 		StoragePath:  storagePath,
-		Metadata:     req.Metadata,
+		Metadata:     metadata,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
 
 	if err := s.repo.Insert(ctx, d); err != nil {
+		// Best-effort cleanup to avoid orphaning the uploaded object.
+		_ = s.minio.DeleteFile(ctx, objectName)
 		return nil, err
 	}
 

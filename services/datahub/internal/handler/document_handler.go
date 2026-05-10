@@ -15,6 +15,8 @@ import (
 	"github.com/google/uuid"
 )
 
+const maxUploadBytes = 100 << 20 // 100 MB
+
 type DocumentHandler struct {
 	svc *service.DocumentService
 }
@@ -67,10 +69,14 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Read file bytes and compute SHA-256 hash
-	data, err := io.ReadAll(file)
+	// Read file bytes up to the hard limit, then reject anything larger.
+	data, err := io.ReadAll(io.LimitReader(file, maxUploadBytes+1))
 	if err != nil {
 		writeInternalError(w, "failed to read file", err)
+		return
+	}
+	if int64(len(data)) > maxUploadBytes {
+		writeError(w, http.StatusRequestEntityTooLarge, "file exceeds 100 MB limit")
 		return
 	}
 	sum := sha256.Sum256(data)

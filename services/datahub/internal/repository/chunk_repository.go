@@ -80,9 +80,9 @@ func (r *ChunkRepository) GetByIngestionID(ctx context.Context, ingestionID, ten
 }
 
 func (r *ChunkRepository) Delete(ctx context.Context, chunk *model.Chunk) error {
-	const q = `DELETE FROM chunks WHERE id = $1`
+	const q = `DELETE FROM chunks WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
-	_, err := r.db.Exec(ctx, q, chunk.ID)
+	_, err := r.db.Exec(ctx, q, chunk.ID, chunk.TenantID, chunk.WorkspaceID)
 	if err != nil {
 		return fmt.Errorf("ChunkRepository.Delete: %w", err)
 	}

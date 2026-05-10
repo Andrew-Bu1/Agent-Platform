@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"services/datahub/internal/auth"
@@ -53,7 +54,14 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	results, err := h.svc.Search(r.Context(), datasourceID, tenantID, workspaceID, req)
 	if err != nil {
-		writeInternalError(w, "search failed", err)
+		switch {
+		case errors.Is(err, service.ErrInvalidVector), errors.Is(err, service.ErrUnsupportedDimension):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, service.ErrDatasourceNotFound):
+			writeError(w, http.StatusNotFound, err.Error())
+		default:
+			writeInternalError(w, "search failed", err)
+		}
 		return
 	}
 

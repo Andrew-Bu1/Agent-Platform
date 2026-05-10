@@ -5,8 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"libs/go/common/config"
 	"net/http"
+
+	"libs/go/common/config"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -52,7 +53,7 @@ func (s *MinioStorage) UploadFile(ctx context.Context, objectName string, data [
 	if err != nil {
 		return "", fmt.Errorf("PutObject %s: %w", objectName, err)
 	}
-	return fmt.Sprintf("%s/%s", s.bucket, objectName), nil
+	return objectName, nil
 }
 
 // DownloadFile fetches an object from the bucket and returns its bytes.

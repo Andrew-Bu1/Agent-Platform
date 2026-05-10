@@ -5,6 +5,7 @@ import (
 	"log"
 	"sync"
 
+	workerauth "services/data-worker/internal/auth"
 	"services/data-worker/internal/config"
 	"services/data-worker/internal/repository"
 	"services/data-worker/internal/worker"
@@ -48,12 +49,22 @@ func main() {
 		cfg.DLQKey,
 	)
 
+	tokenProvider := workerauth.NewOAuthTokenProvider(
+		cfg.IamURL,
+		cfg.IamOAuthClientID,
+		cfg.IamOAuthSecret,
+	)
+	if !tokenProvider.Enabled() {
+		log.Println("warning: IAM OAuth credentials not configured; AIHub embedding calls will be unauthenticated")
+	}
+
 	embedWorker := worker.NewEmbedWorker(
 		cfg.Redis,
 		pool,
 		cfg.EmbeddingQueue,
 		cfg.AihubURL,
 		cfg.DLQKey,
+		tokenProvider,
 	)
 
 	var wg sync.WaitGroup

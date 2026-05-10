@@ -74,13 +74,14 @@ func (s *IngestionService) Create(
 		TenantID:       tenantID,
 		WorkspaceID:    workspaceID,
 		StoragePath:    doc.StoragePath,
+		Filename:       doc.Name,
 		ChunkStrategy:  i.ChunkStrategy,
 		ChunkConfig:    i.ChunkConfig,
 		EmbeddingModel: i.EmbeddingModel,
 	}
 	if err := s.queue.Publish(ctx, job); err != nil {
-		// Roll back status so the record is not stuck in processing
-		_ = s.repo.UpdateStatus(ctx, i.ID, IngestionStatusPending)
+		// Delete the orphaned row — the client gets a 500 and can retry.
+		_ = s.repo.Delete(ctx, i.ID, tenantID, workspaceID)
 		return nil, fmt.Errorf("failed to enqueue chunk job: %w", err)
 	}
 
