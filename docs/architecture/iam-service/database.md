@@ -334,7 +334,9 @@ Stores the IAM RSA key pair used to sign JWTs.
 ### Entitlement Layer
 
 #### `features`
-Platform capability flags (e.g. `agent_studio`, `data_hub`, `model_gateway`). Created by platform admins.
+Platform capability flags. Created by platform admins; consumed by downstream services as feature gates.
+
+Key convention: `<service>.<capability>` — e.g. `agent_studio.flows`, `agent_studio.agents`, `agent_studio.tools`, `datahub.datasources`, `datahub.ingestion`, `datahub.search`, `aihub.chat`, `aihub.embedding`.
 
 #### `feature_entitlement`
 Grants a tenant access to a feature.

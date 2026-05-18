@@ -12,6 +12,8 @@ DataHub is the HTTP-facing service that manages the full lifecycle of knowledge 
 
 A **datasource** is a named collection of documents, analogous to a folder or dataset. It is the top-level container that groups related documents and is the unit of access for vector search.
 
+**Feature gate:** `Create`, `Update`, and `Delete` require the tenant to have the `datahub.datasources` feature enabled (checked via JWT permissions). Returns `403` if the feature is not enabled. `Get`/`List` are not gated — read operations are always allowed once authenticated.
+
 - **Create** — registers a new datasource with a name and optional description. A UUID v7 is generated as the primary key. When the caller is a user (not a service client), `created_by_user_id` is set from the JWT `sub` claim; service-client tokens leave it `NULL`.
 - **Get / List** — retrieves a single datasource by ID or lists all datasources belonging to the caller's tenant + workspace.
 - **Update** — modifies the name or description of an existing datasource.
@@ -33,6 +35,8 @@ A **document** is a single uploaded file associated with a datasource. It carrie
 
 An **ingestion** represents one processing run of a document: it pairs the document with a chunking strategy, a chunking config, and an embedding model. The same document can be ingested multiple times with different strategies or models.
 
+**Feature gate:** `Create` requires the `datahub.ingestion` feature to be enabled for the tenant. Returns `403` if not enabled.
+
 - **Create (→ 202 Accepted)** — validates that `chunk_strategy` is one of `fixed_size`, `recursive_split`, or `semantic_chunking` and that `embedding_model` is non-empty. `chunk_config` is optional — when omitted, each strategy applies its own defaults (size=512, overlap=50 for fixed/recursive; maxSize=1024, threshold=0.4 for semantic). It inserts an ingestion record with `status = pending`, then publishes an `IngestionJob` to the Redis ingestion queue via `RPush`. Returns `202 Accepted` immediately — processing is asynchronous.
 - **List by document** — returns all ingestion runs for a given document.
 - **Get by ID** — retrieves a single ingestion record and its current status.
@@ -50,6 +54,8 @@ Chunks are produced exclusively by the `ChunkWorker`; the DataHub API exposes on
 #### 1.5 Vector Search
 
 The search endpoint performs an approximate nearest-neighbour cosine similarity search using **pgvector** against the pre-computed embedding tables.
+
+**Feature gate:** `Search` requires the `datahub.search` feature to be enabled for the tenant. Returns `403` if not enabled.
 
 - **Search** — accepts a raw `vector` (float array) and an optional `topK` (default 10). The vector length determines which dimension table to query (`chunk_384dimension`, `chunk_768dimension`, or `chunk_1024dimension`). The datasource ownership is verified first (tenant-scoped), then the query runs:
   ```sql
