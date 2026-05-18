@@ -1,10 +1,12 @@
+import traceback
 from contextlib import asynccontextmanager
 
-from common.logger import setup_logging
+from common.logger import get_logger, setup_logging
 from common.postgres import PostgresClient
 from common.redis import RedisClient
 from common.storage import MinioStorage
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from src.adapters.registry import build_registry
 from src.api import analytics as analytics_api
@@ -19,7 +21,7 @@ from src.middleware.auth import JwksCache
 from src.repositories.model_config import ModelConfigRepository
 from src.repositories.model_usage_log import ModelUsageLogRepository
 from src.repositories.providers import ProvidersRepository
-from src.services.entitlement import EntitlementGuard
+from src.services.entitlement import EntitlementGuard, FeatureGuard
 from src.services.router import ServiceRouter
 
 
@@ -40,6 +42,7 @@ async def lifespan(app: FastAPI):
     model_usage_log_repo = ModelUsageLogRepository(pg)
     providers_repo = ProvidersRepository(pg)
     entitlement_guard = EntitlementGuard(settings.iam.base_url, redis)
+    feature_guard = FeatureGuard(settings.iam.base_url)
 
     minio = MinioStorage(settings.minio)
     minio.ensure_bucket()
@@ -55,6 +58,7 @@ async def lifespan(app: FastAPI):
     app.state.model_usage_log_repo = model_usage_log_repo
     app.state.providers_repo = providers_repo
     app.state.entitlement_guard = entitlement_guard
+    app.state.feature_guard = feature_guard
     app.state.jwks_cache = jwks_cache
     app.state.iam_config = settings.iam
     app.state.provider_encryption_key = settings.provider.encryption_key
@@ -81,6 +85,20 @@ app = FastAPI(
 )
 
 setup_logging()
+
+_logger = get_logger(__name__)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    _logger.error(
+        "Unhandled exception on %s %s\n%s",
+        request.method,
+        request.url.path,
+        traceback.format_exc(),
+    )
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
 
 app.include_router(chat_api.router(), prefix="/v1")
 app.include_router(embedding_api.router(), prefix="/v1")

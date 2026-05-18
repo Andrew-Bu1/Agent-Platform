@@ -8,6 +8,61 @@ from fastapi import HTTPException
 
 from common.redis import RedisClient
 
+# ── Feature entitlements ──────────────────────────────────────────────────────
+
+_FeatureSet = set[str]
+
+
+class FeatureCache:
+    """Fetches enabled feature keys from IAM and caches them per tenant for 5 minutes."""
+
+    _TTL = 300.0
+
+    def __init__(self, iam_base_url: str) -> None:
+        self._url = f"{iam_base_url}/entitlements/features"
+        self._store: dict[str, tuple[float, _FeatureSet]] = {}
+
+    async def get(self, tenant_id: UUID, bearer_token: str) -> _FeatureSet:
+        key = str(tenant_id)
+        now = time.monotonic()
+
+        if key in self._store:
+            fetched_at, data = self._store[key]
+            if now - fetched_at < self._TTL:
+                return data
+
+        async with httpx.AsyncClient(timeout=5) as client:
+            try:
+                resp = await client.get(
+                    self._url,
+                    headers={"Authorization": f"Bearer {bearer_token}"},
+                )
+                resp.raise_for_status()
+                body = resp.json()
+                entries: list[dict] = body.get("data", [])
+                data = {e["featureKey"] for e in entries if e.get("enabled")}
+            except Exception:
+                # Fail open: if IAM is unreachable, do not block the request.
+                data = set()
+
+        self._store[key] = (now, data)
+        return data
+
+
+class FeatureGuard:
+    """Raises HTTP 403 when the tenant does not have a required feature enabled."""
+
+    def __init__(self, iam_base_url: str) -> None:
+        self._cache = FeatureCache(iam_base_url)
+
+    async def require(self, tenant_id: UUID, bearer_token: str, feature_key: str) -> None:
+        enabled = await self._cache.get(tenant_id, bearer_token)
+        if feature_key not in enabled:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Feature not enabled for this tenant: '{feature_key}'",
+            )
+
 
 @dataclass
 class Entitlement:

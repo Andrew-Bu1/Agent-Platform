@@ -136,6 +136,7 @@ def router() -> APIRouter:
         except Exception as e:
             if "unique" in str(e).lower():
                 raise HTTPException(status_code=409, detail=f"Provider key '{body.provider_key}' already exists")
+            logger.exception(f"Unexpected error creating provider: {e}")
             raise
 
     @r.patch("/{id}")

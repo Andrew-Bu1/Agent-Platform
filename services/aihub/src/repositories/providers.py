@@ -98,7 +98,7 @@ class ProvidersRepository:
             """
             INSERT INTO providers
                 (id, provider_key, display_name, description, logo_url, base_url, adapter_type, sort_order, config_json)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
             RETURNING id, provider_key, display_name, description, logo_url, base_url, adapter_type,
                       config_json, is_active, sort_order, created_at, updated_at
             """,
