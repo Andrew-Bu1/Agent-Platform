@@ -11,10 +11,11 @@ import (
 	"github.com/google/uuid"
 )
 
+
 const (
-	ChunkStrategySemanticChunking 	= "semantic_chunking"
-	ChunkStrategyFixedSize        	= "fixed_size"
-	ChunkStrategyRecursiveSplit		= "recursive_split"
+	ChunkStrategySemanticChunking = "semantic_chunking"
+	ChunkStrategyFixedSize        = "fixed_size"
+	ChunkStrategyRecursiveSplit   = "recursive_split"
 )
 
 type IngestionHandler struct {
@@ -45,6 +46,11 @@ func (h *IngestionHandler) RegisterRoutes(mux *http.ServeMux) {
 // @Failure      500          {object}  map[string]string
 // @Router       /documents/{document_id}/ingestions [post]
 func (h *IngestionHandler) Create(w http.ResponseWriter, r *http.Request) {
+	if !auth.HasPermission(r.Context(), "datahub.ingestion") {
+		writeError(w, http.StatusForbidden, "feature not enabled: datahub.ingestion")
+		return
+	}
+
 	documentID, err := uuid.Parse(r.PathValue("document_id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid document_id")

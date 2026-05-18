@@ -25,6 +25,11 @@ func WorkspaceID(ctx context.Context) uuid.UUID {
 	return commonauth.WorkspaceID(ctx)
 }
 
+// HasPermission returns true when the JWT carried the given permission/feature key.
+func HasPermission(ctx context.Context, key string) bool {
+	return commonauth.HasPermission(ctx, key)
+}
+
 // CreatedByUserID returns the caller's user UUID when the token is a user
 // token, and nil for service-client tokens.
 func CreatedByUserID(ctx context.Context) *uuid.UUID {

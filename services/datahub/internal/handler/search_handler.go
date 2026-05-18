@@ -37,6 +37,11 @@ func (h *SearchHandler) RegisterRoutes(mux *http.ServeMux) {
 // @Failure      500   {object}  map[string]string
 // @Router       /datasources/{id}/search [post]
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
+	if !auth.HasPermission(r.Context(), "datahub.search") {
+		writeError(w, http.StatusForbidden, "feature not enabled: datahub.search")
+		return
+	}
+
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 

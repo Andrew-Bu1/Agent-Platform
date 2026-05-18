@@ -42,6 +42,11 @@ func (h *DatasourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	workspaceID := auth.WorkspaceID(r.Context())
 	createdByUserID := auth.CreatedByUserID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "datahub.datasources") {
+		writeError(w, http.StatusForbidden, "feature not enabled: datahub.datasources")
+		return
+	}
+
 	var req model.CreateDatasourceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -124,6 +129,11 @@ func (h *DatasourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "datahub.datasources") {
+		writeError(w, http.StatusForbidden, "feature not enabled: datahub.datasources")
+		return
+	}
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -156,6 +166,11 @@ func (h *DatasourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *DatasourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "datahub.datasources") {
+		writeError(w, http.StatusForbidden, "feature not enabled: datahub.datasources")
+		return
+	}
 
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

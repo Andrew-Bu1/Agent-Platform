@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"libs/go/common/featuregate"
 	"libs/go/common/storage"
 	"log"
 	"net/http"
@@ -66,10 +67,13 @@ func main() {
 	chunkSvc := service.NewChunkService(chunkRepo)
 	searchSvc := service.NewSearchService(repository.NewSearchRepository(pool), datasourceRepo)
 
+	// Feature gate (per-tenant entitlement check against IAM)
+	gate := featuregate.New(cfg.IamURL)
+
 	// Handlers
-	datasourceHandler := handler.NewDatasourceHandler(datasourceSvc)
+	datasourceHandler := handler.NewDatasourceHandler(datasourceSvc, gate)
 	documentHandler := handler.NewDocumentHandler(documentSvc)
-	ingestionHandler := handler.NewIngestionHandler(ingestionSvc)
+	ingestionHandler := handler.NewIngestionHandler(ingestionSvc, gate)
 	chunkHandler := handler.NewChunkHandler(chunkSvc)
 	searchHandler := handler.NewSearchHandler(searchSvc)
 	dlqHandler := handler.NewDLQHandler(redisQueue, cfg.DLQKey)

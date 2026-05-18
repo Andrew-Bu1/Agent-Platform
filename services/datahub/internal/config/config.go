@@ -10,6 +10,7 @@ type Config struct {
 	Redis          *config.RedisConfig
 	IngestionQueue string
 	DLQKey         string
+	IamURL         string
 	Port           int
 }
 
@@ -24,6 +25,7 @@ func Load() *Config {
 		Redis:          redisCfg,
 		IngestionQueue: config.GetEnvString("REDIS_INGESTION_QUEUE", "datahub:queue:ingestion"),
 		DLQKey:         config.GetEnvString("REDIS_DLQ_KEY", "datahub:queue:dlq"),
+		IamURL:         config.GetEnvString("IAM_URL", "http://iam-service:8080"),
 		Port:           config.GetEnvInt("PORT", 8080),
 	}
 }
