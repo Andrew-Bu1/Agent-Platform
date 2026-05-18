@@ -80,12 +80,19 @@ export const modelUsageLogsApi = {
 
 // ─── Chat (playground) ───────────────────────────────────────────────────────
 
+export interface ChatParams {
+  temperature?: number | null;
+  top_p?: number | null;
+  top_k?: number | null;
+  max_tokens?: number | null;
+}
+
 export const chatApi = {
-  send: (model: string, messages: AihubChatMessage[]) =>
-    api.post<AihubChatResponse>('/aihub/chat', { model, messages, stream: false }),
+  send: (model: string, messages: AihubChatMessage[], params?: ChatParams) =>
+    api.post<AihubChatResponse>('/aihub/chat', { model, messages, stream: false, ...params }),
 
   /** Opens an SSE stream for a chat request. Returns an EventSource-like reader. */
-  stream: (model: string, messages: AihubChatMessage[], onChunk: (text: string) => void, onDone: (usage?: { prompt_tokens?: number | null; completion_tokens?: number | null }) => void, onError: (err: string) => void): (() => void) => {
+  stream: (model: string, messages: AihubChatMessage[], onChunk: (text: string) => void, onDone: (usage?: { prompt_tokens?: number | null; completion_tokens?: number | null }) => void, onError: (err: string) => void, params?: ChatParams): (() => void) => {
     const { accessToken } = useAuthStore.getState();
     const ctrl = new AbortController();
 
@@ -95,7 +102,7 @@ export const chatApi = {
         'Content-Type': 'application/json',
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
-      body: JSON.stringify({ model, messages, stream: true }),
+      body: JSON.stringify({ model, messages, stream: true, ...params }),
       signal: ctrl.signal,
     }).then(async (res) => {
       if (!res.ok) {

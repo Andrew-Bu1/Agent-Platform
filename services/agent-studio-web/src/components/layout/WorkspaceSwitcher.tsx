@@ -252,7 +252,7 @@ export default function WorkspaceSwitcher({ collapsed }: { collapsed: boolean })
                         {switching === ws.id ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500 shrink-0" />
                         ) : isReadOnly ? (
-                          <Eye className="w-3.5 h-3.5 text-gray-300 shrink-0" title="View only" />
+                          <span title="View only" className="shrink-0"><Eye className="w-3.5 h-3.5 text-gray-300" /></span>
                         ) : isActive ? (
                           <Check className="w-3.5 h-3.5 text-brand-500 shrink-0" />
                         ) : null}

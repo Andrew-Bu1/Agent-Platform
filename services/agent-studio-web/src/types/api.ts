@@ -708,7 +708,7 @@ export interface Ingestion {
   chunk_strategy: string;
   chunk_config: Record<string, unknown>;
   embedding_model: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'chunked' | 'completed' | 'failed';
   created_at: string;
   updated_at: string;
 }

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { iamApi } from '../api/iam';
 import { modelsApi } from '../api/aihub';
+import ConfirmDialog from '../components/ConfirmDialog';
 import type {
   Feature,
   FeatureEntitlement,
@@ -192,6 +193,8 @@ function FeatureEntitlements({
   onRefresh: () => void;
   onToast: (type: 'success' | 'error', message: string) => void;
 }) {
+  const [confirmRevoke, setConfirmRevoke] = useState<Feature | null>(null);
+
   async function toggle(feature: Feature, entitlement?: FeatureEntitlement) {
     if (!tenantId) return;
     try {
@@ -215,13 +218,15 @@ function FeatureEntitlements({
   }
 
   async function revoke(feature: Feature) {
-    if (!tenantId || !confirm(`Remove ${feature.name} from this tenant?`)) return;
+    if (!tenantId) return;
     try {
       await iamApi.revokePlatformFeatureEntitlement(tenantId, feature.id);
       onToast('success', 'Feature entitlement removed.');
+      setConfirmRevoke(null);
       onRefresh();
     } catch (err) {
       onToast('error', err instanceof Error ? err.message : 'Failed to remove feature entitlement.');
+      setConfirmRevoke(null);
     }
   }
 
@@ -249,7 +254,7 @@ function FeatureEntitlements({
                 {entitlement?.enabled ? 'Enabled' : entitlement ? 'Disabled' : 'Grant'}
               </button>
               {entitlement && (
-                <button onClick={() => revoke(feature)} className="p-1.5 text-gray-400 hover:text-red-600">
+                <button onClick={() => setConfirmRevoke(feature)} className="p-1.5 text-gray-400 hover:text-red-600">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -258,6 +263,16 @@ function FeatureEntitlements({
         })}
         {features.length === 0 && <p className="text-sm text-gray-400">No feature catalog entries.</p>}
       </div>
+      {confirmRevoke && (
+        <ConfirmDialog
+          title="Revoke feature entitlement"
+          message={`Remove ${confirmRevoke.name} from this tenant?`}
+          confirmLabel="Revoke"
+          variant="warning"
+          onConfirm={() => revoke(confirmRevoke)}
+          onCancel={() => setConfirmRevoke(null)}
+        />
+      )}
     </Section>
   );
 }

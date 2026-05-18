@@ -8,9 +8,10 @@ import {
   RotateCcw,
   Send,
   Settings2,
+  SlidersHorizontal,
   Zap,
 } from 'lucide-react';
-import { modelsApi, chatApi } from '../api/aihub';
+import { modelsApi, chatApi, type ChatParams } from '../api/aihub';
 import type { ModelConfig, AihubChatMessage } from '../types/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -93,6 +94,112 @@ function MessageBubble({ msg }: { msg: Message }) {
   );
 }
 
+// ─── Param slider ─────────────────────────────────────────────────────────────
+
+function ParamSlider({
+  label,
+  hint,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  disabled,
+}: {
+  label: string;
+  hint: string;
+  value: number | null;
+  onChange: (v: number | null) => void;
+  min: number;
+  max: number;
+  step: number;
+  disabled?: boolean;
+}) {
+  const isOn = value !== null;
+
+  return (
+    <div className={`space-y-1.5 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-xs font-semibold text-gray-700">{label}</span>
+          <span className="ml-1.5 text-[11px] text-gray-400">{hint}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isOn && (
+            <span className="font-mono text-xs font-bold text-brand-700 w-10 text-right">
+              {value}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => onChange(isOn ? null : (min + max) / 2)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isOn ? 'bg-brand-600' : 'bg-gray-200'}`}
+          >
+            <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${isOn ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+      </div>
+      {isOn && (
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value ?? (min + max) / 2}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="w-full h-1.5 accent-brand-600 cursor-pointer"
+        />
+      )}
+      {isOn && (
+        <div className="flex justify-between text-[10px] text-gray-300 font-mono">
+          <span>{min}</span>
+          <span>{max}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MaxTokensInput({
+  value,
+  onChange,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  const isOn = value !== null;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-xs font-semibold text-gray-700">Max tokens</span>
+          <span className="ml-1.5 text-[11px] text-gray-400">reply length cap</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(isOn ? null : 1024)}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isOn ? 'bg-brand-600' : 'bg-gray-200'}`}
+        >
+          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${isOn ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
+      {isOn && (
+        <input
+          type="number"
+          min={1}
+          max={32768}
+          value={value ?? 1024}
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10);
+            onChange(isNaN(n) ? null : n);
+          }}
+          className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-mono outline-none focus:border-brand-400"
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ModelPlaygroundPage() {
@@ -101,12 +208,19 @@ export default function ModelPlaygroundPage() {
   const [selectedModelKey, setSelectedModelKey] = useState<string>('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [showSystem, setShowSystem] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
   const [useStreaming, setUseStreaming] = useState(true);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
   const stopRef = useRef<(() => void) | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // generation params — null means "omit from request" (let the model default)
+  const [temperature, setTemperature] = useState<number | null>(null);
+  const [topP, setTopP] = useState<number | null>(null);
+  const [topK, setTopK] = useState<number | null>(null);
+  const [maxTokens, setMaxTokens] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -137,6 +251,17 @@ export default function ModelPlaygroundPage() {
     return hist;
   }
 
+  function buildParams(): ChatParams {
+    const p: ChatParams = {};
+    if (temperature !== null) p.temperature = temperature;
+    if (topP !== null) p.top_p = topP;
+    if (topK !== null) p.top_k = topK;
+    if (maxTokens !== null) p.max_tokens = maxTokens;
+    return p;
+  }
+
+  const activeParamCount = [temperature, topP, topK, maxTokens].filter((v) => v !== null).length;
+
   async function sendMessage() {
     const text = input.trim();
     if (!text || !selectedModelKey || busy) return;
@@ -149,6 +274,7 @@ export default function ModelPlaygroundPage() {
 
     const history = buildHistory();
     history.push({ role: 'user', content: text });
+    const params = buildParams();
     const t0 = Date.now();
 
     if (useStreaming && selectedModel?.supports_streaming) {
@@ -157,9 +283,7 @@ export default function ModelPlaygroundPage() {
         history,
         (chunk) => {
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === asstMsg.id ? { ...m, content: m.content + chunk } : m,
-            ),
+            prev.map((m) => m.id === asstMsg.id ? { ...m, content: m.content + chunk } : m),
           );
         },
         (usage) => {
@@ -167,13 +291,7 @@ export default function ModelPlaygroundPage() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === asstMsg.id
-                ? {
-                    ...m,
-                    status: 'done',
-                    latencyMs,
-                    promptTokens: usage?.prompt_tokens,
-                    completionTokens: usage?.completion_tokens,
-                  }
+                ? { ...m, status: 'done', latencyMs, promptTokens: usage?.prompt_tokens, completionTokens: usage?.completion_tokens }
                 : m,
             ),
           );
@@ -182,39 +300,29 @@ export default function ModelPlaygroundPage() {
         },
         (err) => {
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === asstMsg.id ? { ...m, status: 'error', content: err } : m,
-            ),
+            prev.map((m) => m.id === asstMsg.id ? { ...m, status: 'error', content: err } : m),
           );
           setBusy(false);
           stopRef.current = null;
         },
+        params,
       );
     } else {
       try {
-        const resp = await chatApi.send(selectedModelKey, history);
+        const resp = await chatApi.send(selectedModelKey, history, params);
         const latencyMs = Date.now() - t0;
         const content = resp.choices[0]?.message?.content ?? '';
         setMessages((prev) =>
           prev.map((m) =>
             m.id === asstMsg.id
-              ? {
-                  ...m,
-                  content,
-                  status: 'done',
-                  latencyMs,
-                  promptTokens: resp.usage?.prompt_tokens,
-                  completionTokens: resp.usage?.completion_tokens,
-                }
+              ? { ...m, content, status: 'done', latencyMs, promptTokens: resp.usage?.prompt_tokens, completionTokens: resp.usage?.completion_tokens }
               : m,
           ),
         );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === asstMsg.id ? { ...m, status: 'error', content: msg } : m,
-          ),
+          prev.map((m) => m.id === asstMsg.id ? { ...m, status: 'error', content: msg } : m),
         );
       } finally {
         setBusy(false);
@@ -227,15 +335,12 @@ export default function ModelPlaygroundPage() {
     stopRef.current = null;
     setBusy(false);
     setMessages((prev) =>
-      prev.map((m) => (m.status === 'streaming' ? { ...m, status: 'done' } : m)),
+      prev.map((m) => m.status === 'streaming' ? { ...m, status: 'done' } : m),
     );
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
   return (
@@ -247,7 +352,7 @@ export default function ModelPlaygroundPage() {
           <p className="text-xs text-gray-400">Test any chat model in real time</p>
         </div>
 
-        <div className="flex items-center gap-3 ml-auto">
+        <div className="flex items-center gap-3 ml-auto flex-wrap">
           {/* Model picker */}
           <div className="relative">
             {loadingModels ? (
@@ -293,11 +398,29 @@ export default function ModelPlaygroundPage() {
             onClick={() => setShowSystem((v) => !v)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm border transition-colors ${
               showSystem
-                ? 'bg-brand-50 border-brand-300 text-brand-700'
+                ? 'bg-amber-50 border-amber-300 text-amber-700'
                 : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
             <Settings2 className="w-3.5 h-3.5" /> System
+          </button>
+
+          {/* Generation config toggle */}
+          <button
+            onClick={() => setShowConfig((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm border transition-colors ${
+              showConfig
+                ? 'bg-brand-50 border-brand-300 text-brand-700'
+                : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            Config
+            {activeParamCount > 0 && (
+              <span className="ml-0.5 px-1.5 py-px rounded-full bg-brand-600 text-white text-[10px] font-bold leading-none">
+                {activeParamCount}
+              </span>
+            )}
           </button>
 
           {/* Clear */}
@@ -327,6 +450,46 @@ export default function ModelPlaygroundPage() {
         </div>
       )}
 
+      {/* ── Generation config panel ── */}
+      {showConfig && (
+        <div className="shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">
+            Generation parameters
+            <span className="ml-2 text-[11px] font-normal text-gray-400 normal-case">Toggle a param to override the model default</span>
+          </p>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-5 max-w-2xl">
+            <ParamSlider
+              label="Temperature"
+              hint="randomness · 0 = deterministic"
+              value={temperature}
+              onChange={setTemperature}
+              min={0}
+              max={2}
+              step={0.01}
+            />
+            <ParamSlider
+              label="Top P"
+              hint="nucleus sampling · cumulative prob"
+              value={topP}
+              onChange={setTopP}
+              min={0}
+              max={1}
+              step={0.01}
+            />
+            <ParamSlider
+              label="Top K"
+              hint="limit to top K tokens per step"
+              value={topK}
+              onChange={(v) => setTopK(v === null ? null : Math.round(v))}
+              min={1}
+              max={100}
+              step={1}
+            />
+            <MaxTokensInput value={maxTokens} onChange={setMaxTokens} />
+          </div>
+        </div>
+      )}
+
       {/* ── Model info bar ── */}
       {selectedModel && (
         <div className="shrink-0 px-6 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-4">
@@ -349,17 +512,15 @@ export default function ModelPlaygroundPage() {
       )}
 
       {/* ── Messages ── */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4 bg-gray-50">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 select-none">
             <Bot className="w-10 h-10 mb-3 text-gray-300" />
             <p className="text-sm font-medium">Pick a model and start chatting</p>
-            <p className="text-xs mt-1">Multi-turn. Latency and token counts shown after each reply.</p>
+            <p className="text-xs mt-1">Multi-turn · latency and token counts shown after each reply.</p>
           </div>
         )}
-        {messages.map((m) => (
-          <MessageBubble key={m.id} msg={m} />
-        ))}
+        {messages.map((m) => <MessageBubble key={m.id} msg={m} />)}
         <div ref={bottomRef} />
       </div>
 

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { iamApi } from '../api/iam';
 import { ApiError } from '../api/client';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuthStore } from '../store/authStore';
 import type {
   TenantMember, WorkspaceMember, Role, Permission,
@@ -121,6 +122,7 @@ function OrgMembersTab({
   const [members, setMembers] = useState<TenantMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<{ userId: string; name: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -131,13 +133,13 @@ function OrgMembersTab({
 
   useEffect(() => { load(); }, [tenantId]);
 
-  async function handleRemove(userId: string, name: string) {
-    if (!confirm(`Remove ${name} from this organisation?`)) return;
+  async function handleRemove(userId: string) {
     try {
       await iamApi.removeFromTenant(tenantId, userId);
-      onToast('success', `${name} removed.`);
+      onToast('success', `${confirmRemove?.name ?? 'Member'} removed.`);
+      setConfirmRemove(null);
       load();
-    } catch { onToast('error', 'Failed to remove member.'); }
+    } catch { onToast('error', 'Failed to remove member.'); setConfirmRemove(null); }
   }
 
   async function handleRevoke(userId: string, roleKey: string) {
@@ -221,7 +223,7 @@ function OrgMembersTab({
                   <td className="px-5 py-3.5 text-xs text-gray-400">{new Date(m.joinedAt).toLocaleDateString()}</td>
                   <td className="px-5 py-3.5 text-right">
                     <button
-                      onClick={() => handleRemove(m.userId, m.name)}
+                      onClick={() => setConfirmRemove({ userId: m.userId, name: m.name })}
                       className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                       title="Remove from organisation"
                     >
@@ -244,6 +246,15 @@ function OrgMembersTab({
           onError={(msg) => onToast('error', msg)}
         />
       )}
+      {confirmRemove && (
+        <ConfirmDialog
+          title="Remove member"
+          message={`Remove ${confirmRemove.name} from this organisation?`}
+          confirmLabel="Remove"
+          onConfirm={() => handleRemove(confirmRemove.userId)}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
     </div>
   );
 }
@@ -261,6 +272,7 @@ function WorkspaceMembersTab({
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<{ userId: string; name: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -271,13 +283,13 @@ function WorkspaceMembersTab({
 
   useEffect(() => { load(); }, [tenantId, workspaceId]);
 
-  async function handleRemove(userId: string, name: string) {
-    if (!confirm(`Remove ${name} from this workspace?`)) return;
+  async function handleRemove(userId: string) {
     try {
       await iamApi.removeFromWorkspace(tenantId, workspaceId, userId);
-      onToast('success', `${name} removed from workspace.`);
+      onToast('success', `${confirmRemove?.name ?? 'Member'} removed from workspace.`);
+      setConfirmRemove(null);
       load();
-    } catch { onToast('error', 'Failed to remove member.'); }
+    } catch { onToast('error', 'Failed to remove member.'); setConfirmRemove(null); }
   }
 
   async function handleRevoke(userId: string, roleKey: string) {
@@ -356,7 +368,7 @@ function WorkspaceMembersTab({
                   <td className="px-5 py-3.5 text-xs text-gray-400">{new Date(m.joinedAt).toLocaleDateString()}</td>
                   <td className="px-5 py-3.5 text-right">
                     <button
-                      onClick={() => handleRemove(m.userId, m.name)}
+                      onClick={() => setConfirmRemove({ userId: m.userId, name: m.name })}
                       className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                       title="Remove from workspace"
                     >
@@ -379,6 +391,15 @@ function WorkspaceMembersTab({
           onClose={() => setShowInvite(false)}
           onDone={() => { setShowInvite(false); load(); onToast('success', 'Member added to workspace.'); }}
           onError={(msg) => onToast('error', msg)}
+        />
+      )}
+      {confirmRemove && (
+        <ConfirmDialog
+          title="Remove member"
+          message={`Remove ${confirmRemove.name} from this workspace?`}
+          confirmLabel="Remove"
+          onConfirm={() => handleRemove(confirmRemove.userId)}
+          onCancel={() => setConfirmRemove(null)}
         />
       )}
     </div>
@@ -507,6 +528,7 @@ function RolesTab({
   const [showCreate, setShowCreate] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [showCreateTenant, setShowCreateTenant] = useState(false);
+  const [confirmDeleteRole, setConfirmDeleteRole] = useState<Role | null>(null);
 
   async function toggleRole(roleId: string) {
     if (expanded === roleId) { setExpanded(null); return; }
@@ -523,12 +545,16 @@ function RolesTab({
 
   async function handleDeleteRole(r: Role) {
     if (r.isSystem) { onToast('error', 'System roles cannot be deleted.'); return; }
-    if (!confirm(`Delete role "${r.name}"?`)) return;
+    setConfirmDeleteRole(r);
+  }
+
+  async function executeDeleteRole(r: Role) {
     try {
       await iamApi.deleteRole(r.id);
       onToast('success', `Role "${r.name}" deleted.`);
+      setConfirmDeleteRole(null);
       onRefreshRoles();
-    } catch { onToast('error', 'Failed to delete role.'); }
+    } catch { onToast('error', 'Failed to delete role.'); setConfirmDeleteRole(null); }
   }
 
   async function handleRevokePermission(roleId: string, permId: string) {
@@ -684,6 +710,15 @@ function RolesTab({
           onClose={() => setShowCreateTenant(false)}
           onDone={() => { setShowCreateTenant(false); onToast('success', 'Tenant created.'); }}
           onError={(msg) => onToast('error', msg)}
+        />
+      )}
+      {confirmDeleteRole && (
+        <ConfirmDialog
+          title="Delete role"
+          message={`Delete role "${confirmDeleteRole.name}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => executeDeleteRole(confirmDeleteRole)}
+          onCancel={() => setConfirmDeleteRole(null)}
         />
       )}
     </div>
@@ -1551,9 +1586,11 @@ function EditRoleModal({
 
 function EntitlementsTab({
   tenantId,
+  readOnly,
   onToast,
 }: {
   tenantId: string;
+  readOnly: boolean;
   onToast: (t: 'success' | 'error', m: string) => void;
 }) {
   const [features, setFeatures] = useState<Feature[]>([]);
@@ -1564,6 +1601,9 @@ function EntitlementsTab({
   const [editFeature, setEditFeature] = useState<Feature | null>(null);
   const [showGrantFeature, setShowGrantFeature] = useState(false);
   const [showGrantModel, setShowGrantModel] = useState(false);
+  const [confirmDeleteFeature, setConfirmDeleteFeature] = useState<{ id: string; key: string } | null>(null);
+  const [confirmRevokeFeatureEnt, setConfirmRevokeFeatureEnt] = useState<string | null>(null);
+  const [confirmRevokeModelEnt, setConfirmRevokeModelEnt] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -1586,13 +1626,18 @@ function EntitlementsTab({
   useEffect(() => { load(); }, [tenantId]);
 
   async function handleDeleteFeature(id: string, key: string) {
-    if (!confirm(`Delete feature "${key}"? This cannot be undone.`)) return;
+    setConfirmDeleteFeature({ id, key });
+  }
+
+  async function executeDeleteFeature(id: string, key: string) {
     try {
       await iamApi.deleteFeature(id);
       onToast('success', `Feature "${key}" deleted.`);
+      setConfirmDeleteFeature(null);
       load();
     } catch (err: unknown) {
       onToast('error', err instanceof ApiError ? err.message : 'Failed to delete feature.');
+      setConfirmDeleteFeature(null);
     }
   }
 
@@ -1607,12 +1652,18 @@ function EntitlementsTab({
   }
 
   async function handleRevokeFeatureEntitlement(featureId: string) {
+    setConfirmRevokeFeatureEnt(featureId);
+  }
+
+  async function executeRevokeFeatureEntitlement(featureId: string) {
     try {
       await iamApi.revokePlatformFeatureEntitlement(tenantId, featureId);
       onToast('success', 'Feature entitlement revoked.');
+      setConfirmRevokeFeatureEnt(null);
       load();
     } catch (err: unknown) {
       onToast('error', err instanceof ApiError ? err.message : 'Failed to revoke entitlement.');
+      setConfirmRevokeFeatureEnt(null);
     }
   }
 
@@ -1627,12 +1678,18 @@ function EntitlementsTab({
   }
 
   async function handleRevokeModelEntitlement(id: string) {
+    setConfirmRevokeModelEnt(id);
+  }
+
+  async function executeRevokeModelEntitlement(id: string) {
     try {
       await iamApi.revokePlatformModelEntitlement(tenantId, id);
       onToast('success', 'Model entitlement revoked.');
+      setConfirmRevokeModelEnt(null);
       load();
     } catch (err: unknown) {
       onToast('error', err instanceof ApiError ? err.message : 'Failed to revoke model entitlement.');
+      setConfirmRevokeModelEnt(null);
     }
   }
 
@@ -1644,6 +1701,13 @@ function EntitlementsTab({
 
   return (
     <div className="space-y-8">
+      {readOnly && (
+        <div className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          <Shield className="w-4 h-4 shrink-0" />
+          Entitlements are managed by the platform admin. This is a read-only view of what is enabled for your tenant.
+        </div>
+      )}
+
       {/* ── Platform Features ── */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
@@ -1651,13 +1715,15 @@ function EntitlementsTab({
             <h3 className="text-base font-semibold text-gray-900">Platform features</h3>
             <p className="text-sm text-gray-500 mt-0.5">Global feature registry managed by platform admins.</p>
           </div>
-          <button
-            onClick={() => setShowCreateFeature(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-xl transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            New feature
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => setShowCreateFeature(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-xl transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              New feature
+            </button>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-gray-200">
           {features.length === 0 ? (
@@ -1669,7 +1735,7 @@ function EntitlementsTab({
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Key</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</th>
-                  <th className="px-5 py-3" />
+                  {!readOnly && <th className="px-5 py-3" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -1680,24 +1746,26 @@ function EntitlementsTab({
                     </td>
                     <td className="px-5 py-3.5 font-medium text-gray-900">{f.name}</td>
                     <td className="px-5 py-3.5 text-gray-500">{f.description ?? '—'}</td>
-                    <td className="px-5 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => setEditFeature(f)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteFeature(f.id, f.key)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
+                    {!readOnly && (
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setEditFeature(f)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteFeature(f.id, f.key)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1713,13 +1781,15 @@ function EntitlementsTab({
             <h3 className="text-base font-semibold text-gray-900">Feature entitlements</h3>
             <p className="text-sm text-gray-500 mt-0.5">Features granted to this tenant.</p>
           </div>
-          <button
-            onClick={() => setShowGrantFeature(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-xl transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Grant feature
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => setShowGrantFeature(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-xl transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Grant feature
+            </button>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-gray-200">
           {featureEntitlements.length === 0 ? (
@@ -1731,7 +1801,7 @@ function EntitlementsTab({
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Feature</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Config</th>
-                  <th className="px-5 py-3" />
+                  {!readOnly && <th className="px-5 py-3" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -1748,29 +1818,38 @@ function EntitlementsTab({
                         </div>
                       </td>
                       <td className="px-5 py-3.5">
-                        <button
-                          onClick={() => handleToggleFeatureEntitlement(fe)}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                            fe.enabled
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
-                          title={fe.enabled ? 'Click to disable' : 'Click to enable'}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${fe.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
-                          {fe.enabled ? 'Enabled' : 'Disabled'}
-                        </button>
+                        {readOnly ? (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${fe.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${fe.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                            {fe.enabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleFeatureEntitlement(fe)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                              fe.enabled
+                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                            }`}
+                            title={fe.enabled ? 'Click to disable' : 'Click to enable'}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${fe.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                            {fe.enabled ? 'Enabled' : 'Disabled'}
+                          </button>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 font-mono text-xs text-gray-400 max-w-xs truncate">{fe.config || '—'}</td>
-                      <td className="px-5 py-3.5 text-right">
-                        <button
-                          onClick={() => handleRevokeFeatureEntitlement(fe.featureId)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Revoke"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
+                      {!readOnly && (
+                        <td className="px-5 py-3.5 text-right">
+                          <button
+                            onClick={() => handleRevokeFeatureEntitlement(fe.featureId)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Revoke"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -1787,13 +1866,15 @@ function EntitlementsTab({
             <h3 className="text-base font-semibold text-gray-900">Model entitlements</h3>
             <p className="text-sm text-gray-500 mt-0.5">AI model access and rate limits for this tenant.</p>
           </div>
-          <button
-            onClick={() => setShowGrantModel(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-xl transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Grant model
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => setShowGrantModel(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-xl transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Grant model
+            </button>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-gray-200">
           {modelEntitlements.length === 0 ? (
@@ -1807,7 +1888,7 @@ function EntitlementsTab({
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">RPM / TPM</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Daily / Monthly tokens</th>
-                  <th className="px-5 py-3" />
+                  {!readOnly && <th className="px-5 py-3" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -1820,18 +1901,25 @@ function EntitlementsTab({
                       <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md font-medium">{me.operationType}</span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <button
-                        onClick={() => handleToggleModelEntitlement(me)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                          me.allowed
-                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                            : 'bg-red-100 text-red-600 hover:bg-red-200'
-                        }`}
-                        title={me.allowed ? 'Click to block' : 'Click to allow'}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${me.allowed ? 'bg-green-500' : 'bg-red-500'}`} />
-                        {me.allowed ? 'Allowed' : 'Blocked'}
-                      </button>
+                      {readOnly ? (
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${me.allowed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${me.allowed ? 'bg-green-500' : 'bg-red-500'}`} />
+                          {me.allowed ? 'Allowed' : 'Blocked'}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleModelEntitlement(me)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                            me.allowed
+                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                              : 'bg-red-100 text-red-600 hover:bg-red-200'
+                          }`}
+                          title={me.allowed ? 'Click to block' : 'Click to allow'}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${me.allowed ? 'bg-green-500' : 'bg-red-500'}`} />
+                          {me.allowed ? 'Allowed' : 'Blocked'}
+                        </button>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-xs text-gray-500">
                       {me.rpmLimit ?? '∞'} / {me.tpmLimit ?? '∞'}
@@ -1839,15 +1927,17 @@ function EntitlementsTab({
                     <td className="px-5 py-3.5 text-xs text-gray-500">
                       {me.dailyTokenLimit ?? '∞'} / {me.monthlyTokenLimit ?? '∞'}
                     </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <button
-                        onClick={() => handleRevokeModelEntitlement(me.id)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                        title="Revoke"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
+                    {!readOnly && (
+                      <td className="px-5 py-3.5 text-right">
+                        <button
+                          onClick={() => handleRevokeModelEntitlement(me.id)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Revoke"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1857,7 +1947,7 @@ function EntitlementsTab({
       </section>
 
       {/* ── Modals ── */}
-      {showCreateFeature && (
+      {!readOnly && showCreateFeature && (
         <FeatureFormModal
           onClose={() => setShowCreateFeature(false)}
           onDone={() => { setShowCreateFeature(false); load(); onToast('success', 'Feature created.'); }}
@@ -1888,6 +1978,35 @@ function EntitlementsTab({
           onClose={() => setShowGrantModel(false)}
           onDone={() => { setShowGrantModel(false); load(); onToast('success', 'Model entitlement granted.'); }}
           onError={(m) => onToast('error', m)}
+        />
+      )}
+      {confirmDeleteFeature && (
+        <ConfirmDialog
+          title="Delete feature"
+          message={`Delete feature "${confirmDeleteFeature.key}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => executeDeleteFeature(confirmDeleteFeature.id, confirmDeleteFeature.key)}
+          onCancel={() => setConfirmDeleteFeature(null)}
+        />
+      )}
+      {confirmRevokeFeatureEnt && (
+        <ConfirmDialog
+          title="Revoke feature entitlement"
+          message="Remove this feature entitlement from the tenant?"
+          confirmLabel="Revoke"
+          variant="warning"
+          onConfirm={() => executeRevokeFeatureEntitlement(confirmRevokeFeatureEnt)}
+          onCancel={() => setConfirmRevokeFeatureEnt(null)}
+        />
+      )}
+      {confirmRevokeModelEnt && (
+        <ConfirmDialog
+          title="Revoke model entitlement"
+          message="Remove this model entitlement from the tenant?"
+          confirmLabel="Revoke"
+          variant="warning"
+          onConfirm={() => executeRevokeModelEntitlement(confirmRevokeModelEnt)}
+          onCancel={() => setConfirmRevokeModelEnt(null)}
         />
       )}
     </div>
@@ -2259,10 +2378,11 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
 ];
 
 export default function AccessControlPage() {
-  const { tenantId, workspaceId, selectedTenant, selectedWorkspace } = useAuthStore();
+  const { tenantId, workspaceId, userId, selectedTenant, selectedWorkspace } = useAuthStore();
   const [tab, setTab] = useState<Tab>('org-members');
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
   function showToast(type: 'success' | 'error', msg: string) {
@@ -2272,9 +2392,15 @@ export default function AccessControlPage() {
 
   async function loadRolesAndPermissions() {
     try {
-      const [r, p] = await Promise.all([iamApi.listRoles(), iamApi.listPermissions()]);
+      const [r, p, members] = await Promise.all([
+        iamApi.listRoles(),
+        iamApi.listPermissions(),
+        tenantId ? iamApi.listTenantMembers(tenantId) : Promise.resolve([]),
+      ]);
       setRoles(r);
       setPermissions(p);
+      const me = members.find((m) => m.userId === userId);
+      setIsPlatformAdmin(me?.roles.includes('platform_admin') ?? false);
     } catch { showToast('error', 'Failed to load roles.'); }
   }
 
@@ -2335,7 +2461,7 @@ export default function AccessControlPage() {
         <ApiKeysTab permissions={permissions} onToast={showToast} />
       )}
       {tab === 'entitlements' && (
-        <EntitlementsTab tenantId={tenantId} onToast={showToast} />
+        <EntitlementsTab tenantId={tenantId} readOnly={!isPlatformAdmin} onToast={showToast} />
       )}
 
       {toast && <Toast type={toast.type} msg={toast.msg} />}
