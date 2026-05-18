@@ -99,8 +99,9 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+	createdByUserID := auth.CreatedByUserID(r.Context())
 
-	resp, err := h.svc.Create(r.Context(), req, header.Filename, data, fileHash, tenantID, workspaceID)
+	resp, err := h.svc.Create(r.Context(), req, header.Filename, data, fileHash, tenantID, workspaceID, createdByUserID)
 	if err != nil {
 		if errors.Is(err, service.ErrDuplicateFile) {
 			writeError(w, http.StatusConflict, err.Error())

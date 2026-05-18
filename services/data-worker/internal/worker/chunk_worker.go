@@ -116,14 +116,16 @@ func (w *ChunkWorker) process(ctx context.Context, job model.ChunkingJob) error 
 			"document_id":    job.DocumentID,
 		})
 
-		// Persist the chunk. ON CONFLICT makes replayed chunk jobs idempotent:
-		// if an earlier run already wrote this index, the row is silently kept.
-		_, err := w.db.Exec(ctx, `
-			INSERT INTO chunks (id, tenant_id, workspace_id, document_id, ingestion_id, chunk_index, content, metadata, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-			ON CONFLICT (tenant_id, workspace_id, ingestion_id, chunk_index) DO NOTHING`,
+		// Persist the chunk and always use the canonical row ID. On replay, the
+		// conflict path returns the chunk written by the first successful run.
+		err := w.db.QueryRow(ctx, `
+				INSERT INTO chunks (id, tenant_id, workspace_id, document_id, ingestion_id, chunk_index, content, metadata, created_at, updated_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				ON CONFLICT (tenant_id, workspace_id, ingestion_id, chunk_index)
+				DO UPDATE SET updated_at = EXCLUDED.updated_at
+				RETURNING id`,
 			chunkID, job.TenantID, job.WorkspaceID, job.DocumentID, job.IngestionID, ch.Index, ch.Content, meta, now, now,
-		)
+		).Scan(&chunkID)
 		if err != nil {
 			return fmt.Errorf("insert chunk idx=%d: %w", ch.Index, err)
 		}

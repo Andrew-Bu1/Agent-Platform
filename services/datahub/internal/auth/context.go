@@ -25,3 +25,16 @@ func WorkspaceID(ctx context.Context) uuid.UUID {
 	return commonauth.WorkspaceID(ctx)
 }
 
+// CreatedByUserID returns the caller's user UUID when the token is a user
+// token, and nil for service-client tokens.
+func CreatedByUserID(ctx context.Context) *uuid.UUID {
+	if commonauth.CallerType(ctx) != "user" {
+		return nil
+	}
+	id, err := uuid.Parse(commonauth.Subject(ctx))
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+

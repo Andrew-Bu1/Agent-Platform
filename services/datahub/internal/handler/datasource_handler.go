@@ -40,6 +40,7 @@ func (h *DatasourceHandler) RegisterRoutes(mux *http.ServeMux) {
 func (h *DatasourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+	createdByUserID := auth.CreatedByUserID(r.Context())
 
 	var req model.CreateDatasourceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -51,7 +52,7 @@ func (h *DatasourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.svc.Create(r.Context(), req, tenantID, workspaceID)
+	resp, err := h.svc.Create(r.Context(), req, tenantID, workspaceID, createdByUserID)
 	if err != nil {
 		writeInternalError(w, "failed to create datasource", err)
 		return

@@ -20,8 +20,8 @@ func NewDatasourceRepository(db *pgxpool.Pool) *DatasourceRepository {
 
 func (r *DatasourceRepository) Insert(ctx context.Context, d *model.Datasource) error {
 	const q = `
-		INSERT INTO datasources (id, tenant_id, workspace_id, name, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO datasources (id, tenant_id, workspace_id, name, description, created_by_user_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 	_, err := r.db.Exec(ctx, q,
 		d.ID,
@@ -29,6 +29,7 @@ func (r *DatasourceRepository) Insert(ctx context.Context, d *model.Datasource) 
 		d.WorkspaceID,
 		d.Name,
 		d.Description,
+		d.CreatedByUserID,
 		d.CreatedAt,
 		d.UpdatedAt,
 	)
@@ -40,7 +41,7 @@ func (r *DatasourceRepository) Insert(ctx context.Context, d *model.Datasource) 
 
 func (r *DatasourceRepository) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.Datasource, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, name, description, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, name, description, created_by_user_id, created_at, updated_at
 		FROM datasources
 		WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
@@ -53,6 +54,7 @@ func (r *DatasourceRepository) GetByID(ctx context.Context, id, tenantID, worksp
 		&d.WorkspaceID,
 		&d.Name,
 		&d.Description,
+		&d.CreatedByUserID,
 		&d.CreatedAt,
 		&d.UpdatedAt,
 	); err != nil {
@@ -63,7 +65,7 @@ func (r *DatasourceRepository) GetByID(ctx context.Context, id, tenantID, worksp
 
 func (r *DatasourceRepository) GetAll(ctx context.Context, tenantID, workspaceID uuid.UUID) ([]*model.Datasource, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, name, description, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, name, description, created_by_user_id, created_at, updated_at
 		FROM datasources
 		WHERE tenant_id = $1 AND workspace_id = $2
 		ORDER BY created_at DESC`
@@ -83,6 +85,7 @@ func (r *DatasourceRepository) GetAll(ctx context.Context, tenantID, workspaceID
 			&d.WorkspaceID,
 			&d.Name,
 			&d.Description,
+			&d.CreatedByUserID,
 			&d.CreatedAt,
 			&d.UpdatedAt,
 		); err != nil {

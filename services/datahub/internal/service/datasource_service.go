@@ -18,21 +18,22 @@ func NewDatasourceService(repo *repository.DatasourceRepository) *DatasourceServ
 	return &DatasourceService{repo: repo}
 }
 
-func (s *DatasourceService) Create(ctx context.Context, req model.CreateDatasourceRequest, tenantID, workspaceID uuid.UUID) (*model.DatasourceResponse, error) {
+func (s *DatasourceService) Create(ctx context.Context, req model.CreateDatasourceRequest, tenantID, workspaceID uuid.UUID, createdByUserID *uuid.UUID) (*model.DatasourceResponse, error) {
 	now := time.Now().UTC()
-	
+
 	id, err := uuid.NewV7()
 	if err != nil {
 		return nil, err
 	}
 	d := &model.Datasource{
-		ID:          id,
-		TenantID:    tenantID,
-		WorkspaceID: workspaceID,
-		Name:        req.Name,
-		Description: req.Description,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:              id,
+		TenantID:        tenantID,
+		WorkspaceID:     workspaceID,
+		Name:            req.Name,
+		Description:     req.Description,
+		CreatedByUserID: createdByUserID,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	if err := s.repo.Insert(ctx, d); err != nil {

@@ -37,7 +37,7 @@ func NewIngestionService(
 }
 
 // Create saves a new ingestion with status "pending" and immediately
-// enqueues a ChunkJob so the data-worker starts chunking the document.
+// enqueues an IngestionJob so the data-worker starts the pipeline.
 func (s *IngestionService) Create(
 	ctx context.Context, 
 	req model.CreateIngestionRequest, 
@@ -68,7 +68,7 @@ func (s *IngestionService) Create(
 		return nil, err
 	}
 
-	job := queue.ChunkJob{
+	job := queue.IngestionJob{
 		IngestionID:    i.ID,
 		DocumentID:     i.DocumentID,
 		TenantID:       tenantID,

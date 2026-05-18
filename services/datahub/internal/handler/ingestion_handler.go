@@ -34,7 +34,7 @@ func (h *IngestionHandler) RegisterRoutes(mux *http.ServeMux) {
 
 // Create godoc
 // @Summary      Create and trigger an ingestion
-// @Description  Creates an ingestion record with status "processing" and immediately enqueues a chunk job.
+// @Description  Creates an ingestion record with status "pending" and publishes an IngestionJob to the ingestion queue.
 // @Tags         ingestions
 // @Accept       json
 // @Produce      json

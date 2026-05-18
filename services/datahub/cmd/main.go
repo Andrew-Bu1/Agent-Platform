@@ -72,6 +72,7 @@ func main() {
 	ingestionHandler := handler.NewIngestionHandler(ingestionSvc)
 	chunkHandler := handler.NewChunkHandler(chunkSvc)
 	searchHandler := handler.NewSearchHandler(searchSvc)
+	dlqHandler := handler.NewDLQHandler(redisQueue, cfg.DLQKey)
 
 	mux := http.NewServeMux()
 
@@ -85,6 +86,7 @@ func main() {
 	ingestionHandler.RegisterRoutes(mux)
 	chunkHandler.RegisterRoutes(mux)
 	searchHandler.RegisterRoutes(mux)
+	dlqHandler.RegisterRoutes(mux)
 
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
 

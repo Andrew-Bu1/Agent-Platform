@@ -65,15 +65,77 @@ func (q *Client) DecrAndGet(ctx context.Context, key string) (int64, error) {
 	return q.client.Decr(ctx, key).Result()
 }
 
+// DLQEntry is the envelope stored in the dead-letter queue list.
+type DLQEntry struct {
+	Queue     string `json:"queue"`
+	Payload   string `json:"payload"`
+	Error     string `json:"error"`
+	QueuedAt  string `json:"queued_at"`
+}
+
 // PushDLQ appends a failed-job record to the dead-letter queue list.
 func (q *Client) PushDLQ(ctx context.Context, dlqKey, sourceQueue, rawPayload, errMsg string) {
-	entry, _ := json.Marshal(map[string]string{
-		"queue":   sourceQueue,
-		"payload": rawPayload,
-		"error":   errMsg,
+	entry, _ := json.Marshal(DLQEntry{
+		Queue:    sourceQueue,
+		Payload:  rawPayload,
+		Error:    errMsg,
+		QueuedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 	if err := q.client.RPush(ctx, dlqKey, entry).Err(); err != nil {
 		// Best-effort: log but never panic on DLQ failure.
 		fmt.Printf("[queue] warn: PushDLQ %s: %v\n", dlqKey, err)
 	}
+}
+
+// DLQLen returns the number of entries currently in the dead-letter queue.
+func (q *Client) DLQLen(ctx context.Context, dlqKey string) (int64, error) {
+	return q.client.LLen(ctx, dlqKey).Result()
+}
+
+// DLQList returns up to limit entries from the dead-letter queue without removing them.
+func (q *Client) DLQList(ctx context.Context, dlqKey string, limit int64) ([]DLQEntry, error) {
+	raws, err := q.client.LRange(ctx, dlqKey, 0, limit-1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("queue.DLQList: %w", err)
+	}
+	entries := make([]DLQEntry, 0, len(raws))
+	for _, raw := range raws {
+		var e DLQEntry
+		if err := json.Unmarshal([]byte(raw), &e); err != nil {
+			continue
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+// DLQReplay pops every entry from the dead-letter queue and pushes each
+// payload back to its original source queue. Returns the number replayed.
+func (q *Client) DLQReplay(ctx context.Context, dlqKey string) (int, error) {
+	replayed := 0
+	for {
+		raw, err := q.client.LPop(ctx, dlqKey).Result()
+		if err == redis.Nil {
+			break
+		}
+		if err != nil {
+			return replayed, fmt.Errorf("queue.DLQReplay lpop: %w", err)
+		}
+		var e DLQEntry
+		if err := json.Unmarshal([]byte(raw), &e); err != nil {
+			continue
+		}
+		if err := q.client.RPush(ctx, e.Queue, e.Payload).Err(); err != nil {
+			// Re-queue the entry back to DLQ so it isn't lost.
+			q.client.RPush(ctx, dlqKey, raw)
+			return replayed, fmt.Errorf("queue.DLQReplay rpush to %s: %w", e.Queue, err)
+		}
+		replayed++
+	}
+	return replayed, nil
+}
+
+// DLQClear deletes all entries from the dead-letter queue.
+func (q *Client) DLQClear(ctx context.Context, dlqKey string) error {
+	return q.client.Del(ctx, dlqKey).Err()
 }

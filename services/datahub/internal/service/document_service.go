@@ -29,7 +29,7 @@ func NewDocumentService(repo *repository.DocumentRepository, minio *storage.Mini
 
 // Create uploads the file to MinIO then persists the document record.
 // The caller passes the raw file bytes; storagePath is computed here.
-func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRequest, name string, data []byte, fileHash string, tenantID, workspaceID uuid.UUID) (*model.DocumentResponse, error) {
+func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRequest, name string, data []byte, fileHash string, tenantID, workspaceID uuid.UUID, createdByUserID *uuid.UUID) (*model.DocumentResponse, error) {
 	existing, err := s.repo.FindByHash(ctx, req.DatasourceID, tenantID, workspaceID, fileHash)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
@@ -61,16 +61,17 @@ func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRe
 	now := time.Now().UTC()
 
 	d := &model.Document{
-		ID:           id,
-		TenantID:     tenantID,
-		WorkspaceID:  workspaceID,
-		DatasourceID: req.DatasourceID,
-		Name:         name,
-		FileHash:     fileHash,
-		StoragePath:  storagePath,
-		Metadata:     metadata,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:              id,
+		TenantID:        tenantID,
+		WorkspaceID:     workspaceID,
+		DatasourceID:    req.DatasourceID,
+		Name:            name,
+		FileHash:        fileHash,
+		StoragePath:     storagePath,
+		Metadata:        metadata,
+		CreatedByUserID: createdByUserID,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	if err := s.repo.Insert(ctx, d); err != nil {
