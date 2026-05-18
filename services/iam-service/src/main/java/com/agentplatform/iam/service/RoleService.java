@@ -36,6 +36,23 @@ public class RoleService {
         return roleRepo.findVisibleToTenant(tenantId);
     }
 
+    /**
+     * Returns all roles visible to a given tenant as seen by a platform administrator.
+     * <p>
+     * Includes platform-level system roles ({@code tenant_id IS NULL}) and any
+     * tenant-specific custom roles. This is a read-only cross-tenant view — the
+     * caller must not be a member of {@code tenantId}.
+     *
+     * @param adminUserId the ID of the calling user — must have a {@code platform_admin} role
+     * @param tenantId    the tenant whose roles are being inspected
+     * @throws ForbiddenException if the caller is not a platform administrator
+     */
+    @Transactional(readOnly = true)
+    public List<Role> listRolesForPlatformAdmin(UUID adminUserId, UUID tenantId) {
+        tenantService.requirePlatformAdmin(adminUserId);
+        return roleRepo.findVisibleToTenant(tenantId);
+    }
+
     @Transactional(readOnly = true)
     public Role getRole(UUID tenantId, UUID roleId) {
         Role role = loadAndVerifyVisible(tenantId, roleId);
@@ -57,7 +74,7 @@ public class RoleService {
                            String key, String name, String scopeType, String description) {
         tenantService.requireTenantAdmin(userId, tenantId);
 
-        if (roleRepo.existsByTenantIdAndKey(tenantId, key)) {
+        if (roleRepo.findVisibleToTenant(tenantId).stream().anyMatch(r -> key.equals(r.getKey()))) {
             throw new ConflictException(ErrorCode.CONFLICT,
                     "Role key already exists in this tenant: " + key);
         }

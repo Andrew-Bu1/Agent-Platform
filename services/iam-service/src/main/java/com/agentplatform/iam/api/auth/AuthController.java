@@ -78,6 +78,25 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok(body));
     }
 
+    // ── Switch context (authenticated) ────────────────────────────────────────
+
+    @PostMapping("/switch")
+    public ResponseEntity<ApiResponse<TokenResponse>> switchWorkspace(
+            @Valid @RequestBody SwitchRequest req,
+            @AuthenticationPrincipal AuthContext ctx,
+            HttpServletRequest httpReq) {
+
+        AuthService.TokensIssued r = authService.switchAuthenticated(
+                UUID.fromString(ctx.userId()), req.tenantId(), req.workspaceId(),
+                httpReq.getRemoteAddr(),
+                httpReq.getHeader("User-Agent"));
+
+        TokenResponse body = new TokenResponse(
+                r.accessToken(), r.refreshToken(),
+                accessTokenTtlSeconds, r.userId(), r.tenantId(), r.workspaceId());
+        return ResponseEntity.ok(ApiResponse.ok(body));
+    }
+
     // ── Refresh ─────────────────────────────────────────────────────────────────────
 
     @PostMapping("/refresh")

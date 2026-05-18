@@ -53,6 +53,23 @@ public class TenantService {
                 .toList();
     }
 
+    /**
+     * Returns all active, non-platform tenants visible to the platform administrator.
+     * <p>
+     * The internal {@code platform} anchor tenant (plan_key = "platform") is excluded
+     * because it is an implementation detail and must not appear in admin UIs.
+     *
+     * @param userId the ID of the calling user — must have a {@code platform_admin} role
+     * @throws ForbiddenException if the caller is not a platform administrator
+     */
+    @Transactional(readOnly = true)
+    public List<Tenant> listAllTenantsForPlatformAdmin(UUID userId) {
+        requirePlatformAdmin(userId);
+        return tenantRepo.findByStatus("active").stream()
+                .filter(t -> !"platform".equals(t.getPlanKey()))
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public Tenant getTenant(UUID userId, UUID tenantId) {
         requireActiveMembership(userId, tenantId);
@@ -64,6 +81,12 @@ public class TenantService {
     @Transactional(readOnly = true)
     public List<Workspace> listTenantWorkspaces(UUID userId, UUID tenantId) {
         requireActiveMembership(userId, tenantId);
+        return workspaceRepo.findByTenantIdAndStatus(tenantId, "active");
+    }
+
+    @Transactional(readOnly = true)
+    public List<Workspace> listTenantWorkspacesForPlatformAdmin(UUID userId, UUID tenantId) {
+        requirePlatformAdmin(userId);
         return workspaceRepo.findByTenantIdAndStatus(tenantId, "active");
     }
 
@@ -189,14 +212,14 @@ public class TenantService {
         List<MembershipRole> assigned = membershipRoleRepo.findByIdMembershipId(membership.getId());
         List<UUID> roleIds = assigned.stream().map(mr -> mr.getId().getRoleId()).toList();
         boolean isAdmin = roleRepo.findByIdIn(roleIds).stream()
-                .anyMatch(r -> "tenant_admin".equals(r.getKey()));
+                .anyMatch(r -> "tenant_admin".equals(r.getKey()) || "platform_admin".equals(r.getKey()));
         if (!isAdmin) {
             throw new ForbiddenException(ErrorCode.FORBIDDEN,
                     "tenant_admin role required");
         }
     }
 
-    void requirePlatformAdmin(UUID userId) {
+    public void requirePlatformAdmin(UUID userId) {
         List<UUID> membershipIds = membershipRepo.findByUserIdAndStatus(userId, "active")
                 .stream().map(Membership::getId).toList();
         if (membershipIds.isEmpty()) {

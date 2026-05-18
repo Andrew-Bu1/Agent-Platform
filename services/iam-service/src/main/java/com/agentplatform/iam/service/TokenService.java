@@ -19,7 +19,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TokenService {
 
-    private static final List<String> USER_DEFAULT_AUD = List.of("studio", "datahub", "aihub");
+    private static final List<String> USER_DEFAULT_AUD = List.of("studio", "datahub", "aihub", "agent-orchestrator");
 
     private final SigningKeyService signingKeyService;
 

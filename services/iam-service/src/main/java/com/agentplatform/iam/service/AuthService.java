@@ -167,6 +167,27 @@ public class AuthService {
         return issueTokens(user, tenantId, workspaceId, ipAddress, userAgent);
     }
 
+    // ── Switch context (authenticated — no preAuthToken required) ─────────────
+
+    @Transactional
+    public TokensIssued switchAuthenticated(UUID userId, UUID tenantId, UUID workspaceId,
+                                            String ipAddress, String userAgent) {
+        IamUser user = userRepo.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException(ErrorCode.USER_NOT_FOUND, "User not found"));
+
+        Membership membership = membershipRepo
+                .findByUserIdAndTenantIdAndStatus(userId, tenantId, "active")
+                .orElseThrow(() -> new UnauthorizedException(ErrorCode.TENANT_NOT_FOUND,
+                        "User has no active membership in the selected tenant"));
+
+        workspaceMembershipRepo
+                .findByMembershipIdAndWorkspaceIdAndStatus(membership.getId(), workspaceId, "active")
+                .orElseThrow(() -> new UnauthorizedException(ErrorCode.WORKSPACE_NOT_FOUND,
+                        "User does not have access to the selected workspace"));
+
+        return issueTokens(user, tenantId, workspaceId, ipAddress, userAgent);
+    }
+
     // ── Logout ─────────────────────────────────────────────────────────────────
 
     /** Revoke all sessions for the authenticated user (log out everywhere). */

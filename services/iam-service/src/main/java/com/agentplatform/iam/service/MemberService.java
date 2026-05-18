@@ -78,6 +78,7 @@ public class MemberService {
                     m.getUserId(),
                     user != null ? user.getEmail() : null,
                     user != null ? user.getName() : null,
+                    m.getJoinedAt(),
                     rolesByMembershipId.getOrDefault(m.getId(), List.of()));
         }).toList();
     }
@@ -89,7 +90,7 @@ public class MemberService {
     @Transactional
     public TenantMemberDto inviteToTenant(UUID inviterId, UUID tenantId,
                                           String targetEmail, String roleKey) {
-        tenantService.requireActiveMembership(inviterId, tenantId);
+        tenantService.requireTenantAdmin(inviterId, tenantId);
 
         IamUser target = userRepo.findByEmail(targetEmail)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND,
@@ -99,7 +100,7 @@ public class MemberService {
             throw new ConflictException(ErrorCode.CONFLICT, "User is already a member of this tenant");
         }
 
-        Role role = requireRole(roleKey, "tenant");
+        Role role = requireRole(tenantId, roleKey, "tenant");
 
         Membership membership = new Membership();
         membership.setTenantId(tenantId);
@@ -113,13 +114,13 @@ public class MemberService {
         membershipRoleRepo.save(mr);
 
         return new TenantMemberDto(membership.getId(), target.getId(),
-                target.getEmail(), target.getName(), List.of(role.getKey()));
+                target.getEmail(), target.getName(), membership.getJoinedAt(), List.of(role.getKey()));
     }
 
     /** Remove a user from a tenant (soft-deactivate their membership). */
     @Transactional
     public void removeFromTenant(UUID removerId, UUID tenantId, UUID targetUserId) {
-        tenantService.requireActiveMembership(removerId, tenantId);
+        tenantService.requireTenantAdmin(removerId, tenantId);
 
         Membership membership = membershipRepo.findByUserIdAndTenantIdAndStatus(targetUserId, tenantId, "active")
                 .orElseThrow(() -> new NotFoundException(ErrorCode.MEMBERSHIP_NOT_FOUND,
@@ -146,13 +147,13 @@ public class MemberService {
     @Transactional
     public void assignTenantRole(UUID assignerId, UUID tenantId,
                                  UUID targetUserId, String roleKey) {
-        tenantService.requireActiveMembership(assignerId, tenantId);
+        tenantService.requireTenantAdmin(assignerId, tenantId);
 
         Membership membership = membershipRepo.findByUserIdAndTenantIdAndStatus(targetUserId, tenantId, "active")
                 .orElseThrow(() -> new NotFoundException(ErrorCode.MEMBERSHIP_NOT_FOUND,
                         "Target user is not a member of this tenant"));
 
-        Role role = requireRole(roleKey, "tenant");
+        Role role = requireRole(tenantId, roleKey, "tenant");
 
         MembershipRoleId pk = new MembershipRoleId(membership.getId(), role.getId());
         if (membershipRoleRepo.existsById(pk)) {
@@ -166,13 +167,13 @@ public class MemberService {
     @Transactional
     public void revokeTenantRole(UUID revokerId, UUID tenantId,
                                  UUID targetUserId, String roleKey) {
-        tenantService.requireActiveMembership(revokerId, tenantId);
+        tenantService.requireTenantAdmin(revokerId, tenantId);
 
         Membership membership = membershipRepo.findByUserIdAndTenantIdAndStatus(targetUserId, tenantId, "active")
                 .orElseThrow(() -> new NotFoundException(ErrorCode.MEMBERSHIP_NOT_FOUND,
                         "Target user is not a member of this tenant"));
 
-        Role role = requireRole(roleKey, "tenant");
+        Role role = requireRole(tenantId, roleKey, "tenant");
 
         MembershipRoleId pk = new MembershipRoleId(membership.getId(), role.getId());
         if (!membershipRoleRepo.existsById(pk)) {
@@ -221,6 +222,7 @@ public class MemberService {
                     userId,
                     user != null ? user.getEmail() : null,
                     user != null ? user.getName() : null,
+                    wm.getJoinedAt(),
                     rolesByWmId.getOrDefault(wm.getId(), List.of()));
         }).toList();
     }
@@ -232,7 +234,7 @@ public class MemberService {
     @Transactional
     public WorkspaceMemberDto inviteToWorkspace(UUID inviterId, UUID tenantId, UUID workspaceId,
                                                 String targetEmail, String roleKey) {
-        tenantService.requireActiveMembership(inviterId, tenantId);
+        tenantService.requireTenantAdmin(inviterId, tenantId);
         requireWorkspaceInTenant(workspaceId, tenantId);
 
         IamUser target = userRepo.findByEmail(targetEmail)
@@ -248,7 +250,7 @@ public class MemberService {
             throw new ConflictException(ErrorCode.CONFLICT, "User is already a member of this workspace");
         }
 
-        Role role = requireRole(roleKey, "workspace");
+        Role role = requireRole(tenantId, roleKey, "workspace");
 
         WorkspaceMembership wm = tenantService.createWorkspaceMembershipInternal(
                 tenantId, workspaceId, membership.getId());
@@ -258,13 +260,13 @@ public class MemberService {
         workspaceMembershipRoleRepo.save(wmr);
 
         return new WorkspaceMemberDto(wm.getId(), target.getId(),
-                target.getEmail(), target.getName(), List.of(role.getKey()));
+                target.getEmail(), target.getName(), wm.getJoinedAt(), List.of(role.getKey()));
     }
 
     /** Remove a user from a workspace (soft-deactivate their workspace membership). */
     @Transactional
     public void removeFromWorkspace(UUID removerId, UUID tenantId, UUID workspaceId, UUID targetUserId) {
-        tenantService.requireActiveMembership(removerId, tenantId);
+        tenantService.requireTenantAdmin(removerId, tenantId);
         requireWorkspaceInTenant(workspaceId, tenantId);
 
         Membership membership = membershipRepo.findByUserIdAndTenantIdAndStatus(targetUserId, tenantId, "active")
@@ -286,7 +288,7 @@ public class MemberService {
     @Transactional
     public void assignWorkspaceRole(UUID assignerId, UUID tenantId, UUID workspaceId,
                                     UUID targetUserId, String roleKey) {
-        tenantService.requireActiveMembership(assignerId, tenantId);
+        tenantService.requireTenantAdmin(assignerId, tenantId);
         requireWorkspaceInTenant(workspaceId, tenantId);
 
         Membership membership = membershipRepo.findByUserIdAndTenantIdAndStatus(targetUserId, tenantId, "active")
@@ -298,7 +300,7 @@ public class MemberService {
                 .orElseThrow(() -> new NotFoundException(ErrorCode.MEMBERSHIP_NOT_FOUND,
                         "Target user is not a member of this workspace"));
 
-        Role role = requireRole(roleKey, "workspace");
+        Role role = requireRole(tenantId, roleKey, "workspace");
 
         WorkspaceMembershipRoleId pk = new WorkspaceMembershipRoleId(wm.getId(), role.getId());
         if (workspaceMembershipRoleRepo.existsById(pk)) {
@@ -312,7 +314,7 @@ public class MemberService {
     @Transactional
     public void revokeWorkspaceRole(UUID revokerId, UUID tenantId, UUID workspaceId,
                                     UUID targetUserId, String roleKey) {
-        tenantService.requireActiveMembership(revokerId, tenantId);
+        tenantService.requireTenantAdmin(revokerId, tenantId);
         requireWorkspaceInTenant(workspaceId, tenantId);
 
         Membership membership = membershipRepo.findByUserIdAndTenantIdAndStatus(targetUserId, tenantId, "active")
@@ -324,7 +326,7 @@ public class MemberService {
                 .orElseThrow(() -> new NotFoundException(ErrorCode.MEMBERSHIP_NOT_FOUND,
                         "Target user is not a member of this workspace"));
 
-        Role role = requireRole(roleKey, "workspace");
+        Role role = requireRole(tenantId, roleKey, "workspace");
 
         WorkspaceMembershipRoleId pk = new WorkspaceMembershipRoleId(wm.getId(), role.getId());
         if (!workspaceMembershipRoleRepo.existsById(pk)) {
@@ -335,15 +337,18 @@ public class MemberService {
 
     // ── DTOs ──────────────────────────────────────────────────────────────────
 
-    public record TenantMemberDto(UUID membershipId, UUID userId, String email, String name, List<String> roles) {}
+    public record TenantMemberDto(UUID membershipId, UUID userId, String email, String name,
+                                  OffsetDateTime joinedAt, List<String> roles) {}
 
     public record WorkspaceMemberDto(UUID workspaceMembershipId, UUID userId, String email, String name,
-                                     List<String> roles) {}
+                                     OffsetDateTime joinedAt, List<String> roles) {}
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    private Role requireRole(String roleKey, String scopeHint) {
-        Role role = roleRepo.findByKey(roleKey)
+    private Role requireRole(UUID tenantId, String roleKey, String scopeHint) {
+        Role role = roleRepo.findVisibleToTenant(tenantId).stream()
+                .filter(r -> roleKey.equals(r.getKey()))
+                .findFirst()
                 .orElseThrow(() -> new NotFoundException(ErrorCode.ROLE_NOT_FOUND,
                         "Role '" + roleKey + "' not found"));
         if ("platform".equals(role.getScopeType())) {
@@ -364,8 +369,6 @@ public class MemberService {
                         "Workspace not found in this tenant"));
     }
 }
-
-
 
 
 
