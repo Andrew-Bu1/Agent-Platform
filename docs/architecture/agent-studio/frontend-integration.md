@@ -100,7 +100,7 @@ DELETE /api/v1/agents/{id}         archive
   "id": "uuid",
   "name": "My Agent",
   "description": "...",
-  "agentKind": "single | team",
+  "agentKind": "react | team",
   "definitionJson": {},
   "toolIds": ["uuid", "uuid"],
   "modelId": "gpt-4o",

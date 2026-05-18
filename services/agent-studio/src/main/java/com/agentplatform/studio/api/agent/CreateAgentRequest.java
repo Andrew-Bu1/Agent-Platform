@@ -16,7 +16,7 @@ public class CreateAgentRequest {
     private String name;
 
     private String   description;
-    private String   agentKind = "single";
+    private String   agentKind = "react";
     private JsonNode definition;
     private List<UUID> toolIds;
     private String   modelId;

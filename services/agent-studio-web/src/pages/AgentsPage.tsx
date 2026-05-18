@@ -1,17 +1,201 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { Bot, Plus, Pencil, Trash2, Loader2, X, AlertCircle, Key } from 'lucide-react';
+import {
+  Bot, Plus, Pencil, Trash2, Loader2, X, AlertCircle, Key,
+  Brain, Zap, Search, Check,
+} from 'lucide-react';
 import { agentsApi } from '../api/agents';
-import type { Agent, CreateAgentRequest } from '../types/api';
+import { modelsApi } from '../api/aihub';
+import { toolsApi } from '../api/tools';
+import type { Agent, CreateAgentRequest, ModelConfig, Tool } from '../types/api';
 
 const KIND_PERMISSIONS: Record<string, string[]> = {
-  llm:          ['model:invoke'],
-  tool_calling: ['model:invoke'],
-  react:        ['model:invoke', 'agent:run'],
-  chain:        ['model:invoke', 'flow:run'],
-  custom:       [],
+  react: ['model:invoke'],
+  team:  ['model:invoke', 'agent:run'],
 };
 
-const AGENT_KINDS = ['llm', 'tool_calling', 'react', 'chain', 'custom'];
+const AGENT_KINDS = ['react', 'team'] as const;
+type AgentKind = typeof AGENT_KINDS[number];
+
+const KIND_LABELS: Record<AgentKind, string> = {
+  react: 'React Agent',
+  team:  'Team',
+};
+
+const KIND_DESCRIPTIONS: Record<AgentKind, string> = {
+  react: 'Single agent — ReAct loop with tools',
+  team:  'Supervisor + member agents (handoff)',
+};
+
+const KIND_ICONS: Record<AgentKind, React.ReactNode> = {
+  react: <Zap className="w-4 h-4" />,
+  team:  <Brain className="w-4 h-4" />,
+};
+
+const KIND_COLORS: Record<string, string> = {
+  react: 'bg-purple-100 text-purple-700',
+  team:  'bg-blue-100 text-blue-700',
+};
+
+const KIND_USES_TOOLS: Record<AgentKind, boolean> = {
+  react: true,
+  team:  false,
+};
+
+// ─── Tool multi-select ────────────────────────────────────────────────────────
+
+const TOOL_TYPE_COLORS: Record<string, string> = {
+  http_api: 'bg-sky-100 text-sky-700',
+  function: 'bg-amber-100 text-amber-700',
+  code:     'bg-violet-100 text-violet-700',
+  database: 'bg-emerald-100 text-emerald-700',
+  custom:   'bg-gray-100 text-gray-700',
+};
+
+function ToolSelector({
+  tools,
+  selected,
+  onChange,
+}: { tools: Tool[]; selected: string[]; onChange: (ids: string[]) => void }) {
+  const [search, setSearch] = useState('');
+  const filtered = tools.filter(
+    (t) => t.name.toLowerCase().includes(search.toLowerCase()) ||
+           (t.description ?? '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const toggle = (id: string) =>
+    onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
+
+  return (
+    <div className="rounded-xl border border-gray-200 overflow-hidden">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search tools…"
+          className="w-full pl-9 pr-3 py-2.5 text-sm border-b border-gray-200 outline-none focus:bg-gray-50"
+        />
+      </div>
+      <div className="max-h-48 overflow-y-auto divide-y divide-gray-50">
+        {filtered.length === 0 ? (
+          <p className="text-center text-sm text-gray-400 py-6">No tools found</p>
+        ) : (
+          filtered.map((t) => {
+            const active = selected.includes(t.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => toggle(t.id)}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                  active ? 'bg-brand-50' : 'hover:bg-gray-50'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+                  active ? 'bg-brand-600 border-brand-600' : 'border-gray-300'
+                }`}>
+                  {active && <Check className="w-3 h-3 text-white" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{t.name}</p>
+                  {t.description && (
+                    <p className="text-xs text-gray-400 truncate">{t.description}</p>
+                  )}
+                </div>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${TOOL_TYPE_COLORS[t.toolType] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {t.toolType}
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+      {selected.length > 0 && (
+        <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+          {selected.length} tool{selected.length !== 1 ? 's' : ''} selected
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Model selector ───────────────────────────────────────────────────────────
+
+function ModelSelector({
+  models,
+  value,
+  onChange,
+}: { models: ModelConfig[]; value: string; onChange: (id: string) => void }) {
+  const [search, setSearch] = useState('');
+  const filtered = models.filter(
+    (m) =>
+      m.display_name.toLowerCase().includes(search.toLowerCase()) ||
+      m.provider_key.toLowerCase().includes(search.toLowerCase()) ||
+      m.model_key.toLowerCase().includes(search.toLowerCase())
+  );
+  const selected = models.find((m) => m.model_key === value);
+
+  return (
+    <div className="space-y-2">
+      {selected && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-50 border border-brand-200 text-sm">
+          <Brain className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+          <span className="font-medium text-brand-800 flex-1 truncate">{selected.display_name}</span>
+          <span className="text-xs text-brand-500 font-mono">{selected.provider_key}</span>
+          <button type="button" onClick={() => onChange('')} className="text-brand-400 hover:text-brand-700 ml-1">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+      <div className="rounded-xl border border-gray-200 overflow-hidden">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search models…"
+            className="w-full pl-9 pr-3 py-2.5 text-sm border-b border-gray-200 outline-none focus:bg-gray-50"
+          />
+        </div>
+        <div className="max-h-44 overflow-y-auto divide-y divide-gray-50">
+          {filtered.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-5">No models found</p>
+          ) : (
+            filtered.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => onChange(m.model_key)}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                  value === m.model_key ? 'bg-brand-50' : 'hover:bg-gray-50'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full border shrink-0 flex items-center justify-center ${
+                  value === m.model_key ? 'border-brand-600 bg-brand-600' : 'border-gray-300'
+                }`}>
+                  {value === m.model_key && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{m.display_name}</p>
+                  <p className="text-xs text-gray-400 font-mono">{m.provider_key} · {m.model_key}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {m.supports_tools && (
+                    <span className="px-1.5 py-0.5 bg-orange-50 text-orange-600 text-[10px] font-medium rounded border border-orange-200">tools</span>
+                  )}
+                  {m.supports_streaming && (
+                    <span className="px-1.5 py-0.5 bg-green-50 text-green-600 text-[10px] font-medium rounded border border-green-200">stream</span>
+                  )}
+                  <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-medium rounded">{m.operation_type}</span>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Modal ───────────────────────────────────────────────────────────────────
 
@@ -25,25 +209,69 @@ function AgentModal({
   onSaved: () => void;
 }) {
   const isEdit = !!agent;
+
+  // Basic fields
   const [name, setName] = useState(agent?.name ?? '');
   const [description, setDescription] = useState(agent?.description ?? '');
-  const [agentKind, setAgentKind] = useState(agent?.agentKind ?? 'llm');
-  const [modelId, setModelId] = useState(agent?.modelId ?? '');
-  const [toolIds, setToolIds] = useState((agent?.toolIds ?? []).join(', '));
-  const [loading, setLoading] = useState(false);
+  const [agentKind, setAgentKind] = useState<AgentKind>((agent?.agentKind as AgentKind) ?? 'react');
+  const [modelKey, setModelKey] = useState(agent?.modelId ?? '');
+  const [selectedToolIds, setSelectedToolIds] = useState<string[]>(agent?.toolIds ?? []);
+
+  // Definition fields (extracted from agent.definition)
+  const def = agent?.definition ?? {};
+  const [systemPrompt, setSystemPrompt] = useState((def.system_prompt as string) ?? '');
+  const [maxIterations, setMaxIterations] = useState(String((def.max_iterations as number) ?? 10));
+
+  // Remote data
+  const [models, setModels] = useState<ModelConfig[]>([]);
+  const [tools, setTools] = useState<Tool[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      setLoadingData(true);
+      try {
+        const [modelsRes, toolsRes] = await Promise.all([
+          modelsApi.list({ operation_type: 'chat' }),
+          toolsApi.list(0, 100),
+        ]);
+        setModels(modelsRes);
+        setTools(toolsRes.content);
+      } catch {
+        // non-fatal — forms still usable
+      } finally {
+        setLoadingData(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  function buildDefinition(): Record<string, unknown> {
+    const d: Record<string, unknown> = {};
+    if (agentKind === 'react') {
+      if (systemPrompt.trim()) d.system_prompt = systemPrompt.trim();
+      const n = parseInt(maxIterations, 10);
+      if (!isNaN(n)) d.max_iterations = n;
+    }
+    return d;
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    const definition = buildDefinition();
+    setSaving(true);
     try {
       const body: CreateAgentRequest = {
         name: name.trim(),
         description: description.trim() || undefined,
         agentKind,
-        modelId: modelId.trim() || undefined,
-        toolIds: toolIds.split(',').map((s) => s.trim()).filter(Boolean),
+        modelId: modelKey || undefined,
+        toolIds: selectedToolIds,
+        definition,
       };
       if (isEdit) {
         await agentsApi.update(agent.id, body);
@@ -55,14 +283,17 @@ function AgentModal({
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save agent.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
+  const permissions = KIND_PERMISSIONS[agentKind] ?? [];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-base font-semibold text-gray-900">
             {isEdit ? 'Edit agent' : 'New agent'}
           </h2>
@@ -71,75 +302,134 @@ function AgentModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Name *</label>
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My agent"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-            />
-          </div>
+        {/* Body */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What does this agent do?"
-              rows={2}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 resize-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+          {/* Name + description */}
+          <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Agent kind *</label>
-              <select
-                value={agentKind}
-                onChange={(e) => setAgentKind(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 bg-white"
-              >
-                {AGENT_KINDS.map((k) => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Model ID</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Name *</label>
               <input
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-                placeholder="gpt-4o"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="My research agent"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe what this agent does…"
+                rows={2}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 resize-none"
               />
             </div>
           </div>
 
+          {/* Agent kind */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Tool IDs (comma-separated)</label>
-            <input
-              value={toolIds}
-              onChange={(e) => setToolIds(e.target.value)}
-              placeholder="uuid1, uuid2"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">Agent kind *</label>
+            <div className="grid grid-cols-5 gap-2">
+              {AGENT_KINDS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setAgentKind(k)}
+                  className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl border text-center transition-all ${
+                    agentKind === k
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300 hover:text-brand-700'
+                  }`}
+                >
+                  {KIND_ICONS[k]}
+                  <span className="text-xs font-medium leading-tight">{KIND_LABELS[k]}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">{KIND_DESCRIPTIONS[agentKind]}</p>
           </div>
 
-          {/* Platform permissions — derived from kind, read-only */}
+          <div className="border-t border-gray-100" />
+
+          {/* Model selector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Model
+              <span className="ml-1.5 text-gray-400 font-normal">(chat models)</span>
+            </label>
+            {loadingData ? (
+              <div className="flex items-center gap-2 text-sm text-gray-400 py-3">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading models…
+              </div>
+            ) : (
+              <ModelSelector models={models} value={modelKey} onChange={setModelKey} />
+            )}
+          </div>
+
+          {/* Tools — only for kinds that support them */}
+          {KIND_USES_TOOLS[agentKind] && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Tools</label>
+              {loadingData ? (
+                <div className="flex items-center gap-2 text-sm text-gray-400 py-3">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading tools…
+                </div>
+              ) : (
+                <ToolSelector tools={tools} selected={selectedToolIds} onChange={setSelectedToolIds} />
+              )}
+            </div>
+          )}
+
+          <div className="border-t border-gray-100" />
+
+          {/* Definition — kind-aware */}
+          {agentKind === 'react' && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">System prompt</label>
+                <textarea
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  placeholder="You are a helpful assistant…"
+                  rows={4}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 resize-y"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Max iterations</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={maxIterations}
+                  onChange={(e) => setMaxIterations(e.target.value)}
+                  className="w-32 px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                />
+              </div>
+            </div>
+          )}
+
+          {agentKind === 'team' && (
+            <div className="flex items-start gap-2 px-3.5 py-3 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-700">
+              <Brain className="w-4 h-4 mt-0.5 shrink-0" />
+              <p>Team agents act as a supervisor that delegates to member agents at runtime. Configure the member agents on the flow canvas when you build your flow.</p>
+            </div>
+          )}
+
+          {/* Permissions badge */}
           <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-gray-50 border border-gray-200">
             <Key className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Platform permissions (determined by kind)</p>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Required permissions (determined by kind)</p>
               <div className="flex flex-wrap gap-1.5">
-                {(KIND_PERMISSIONS[agentKind] ?? []).length === 0 ? (
-                  <span className="text-xs text-gray-400 italic">None required</span>
+                {permissions.length === 0 ? (
+                  <span className="text-xs text-gray-400 italic">None</span>
                 ) : (
-                  (KIND_PERMISSIONS[agentKind] ?? []).map((k) => (
-                    <span key={k} className="px-2 py-0.5 bg-brand-50 text-brand-700 text-xs font-mono rounded-lg border border-brand-200">{k}</span>
+                  permissions.map((p) => (
+                    <span key={p} className="px-2 py-0.5 bg-brand-50 text-brand-700 text-xs font-mono rounded-lg border border-brand-200">{p}</span>
                   ))
                 )}
               </div>
@@ -153,7 +443,8 @@ function AgentModal({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-1">
+          {/* Footer */}
+          <div className="flex justify-end gap-2 pt-1 border-t border-gray-100">
             <button
               type="button"
               onClick={onClose}
@@ -163,10 +454,10 @@ function AgentModal({
             </button>
             <button
               type="submit"
-              disabled={loading || !name.trim()}
+              disabled={saving || !name.trim()}
               className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors"
             >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               {isEdit ? 'Save changes' : 'Create agent'}
             </button>
           </div>
@@ -177,14 +468,6 @@ function AgentModal({
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-
-const KIND_COLORS: Record<string, string> = {
-  llm:          'bg-blue-100 text-blue-700',
-  tool_calling: 'bg-orange-100 text-orange-700',
-  react:        'bg-purple-100 text-purple-700',
-  chain:        'bg-teal-100 text-teal-700',
-  custom:       'bg-gray-100 text-gray-700',
-};
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);

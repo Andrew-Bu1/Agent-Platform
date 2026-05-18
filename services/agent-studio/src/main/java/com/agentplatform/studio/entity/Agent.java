@@ -32,7 +32,7 @@ public class Agent extends BaseUuidEntity {
     private String description;
 
     @Column(name = "agent_kind", nullable = false, length = 50)
-    private String agentKind = "single";
+    private String agentKind = "react";
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "definition_json", nullable = false, columnDefinition = "jsonb")

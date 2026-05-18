@@ -18,8 +18,8 @@
 -- 1. AGENTS
 --
 -- Stores both:
---   single = default ReAct-capable agent
---   team   = hierarchical supervisor-worker agent team
+--   react = single ReAct-loop agent (uses tools, has system prompt)
+--   team  = supervisor-handoff agent (coordinates member agents via LLM reasoning)
 --
 -- No agent_versions table.
 -- The latest editable agent/team config lives in definition_json.
@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS agents (
     name VARCHAR(255) NOT NULL,
     description TEXT NULL,
 
-    agent_kind VARCHAR(50) NOT NULL DEFAULT 'single',
-    -- single, team
+    agent_kind VARCHAR(50) NOT NULL DEFAULT 'react',
+    -- react, team
 
     definition_json JSONB NOT NULL DEFAULT '{}'::jsonb,
 

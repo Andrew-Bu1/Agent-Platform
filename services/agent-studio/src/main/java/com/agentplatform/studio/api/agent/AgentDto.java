@@ -32,11 +32,8 @@ public class AgentDto {
     private OffsetDateTime updatedAt;
 
     private static final Map<String, List<String>> KIND_PERMISSIONS = Map.of(
-            "llm",          List.of("model:invoke"),
-            "tool_calling", List.of("model:invoke"),
-            "react",        List.of("model:invoke", "agent:run"),
-            "chain",        List.of("model:invoke", "flow:run"),
-            "custom",       List.of()
+            "react", List.of("model:invoke"),
+            "team",  List.of("model:invoke", "agent:run")
     );
 
     public static AgentDto from(Agent a, ObjectMapper mapper) {
