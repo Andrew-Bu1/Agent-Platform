@@ -19,6 +19,10 @@ class ChatRequest(BaseModel):
     stream: bool = False
     tools: list[dict[str, Any]] | None = None
     tool_choice: str | dict[str, Any] | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    top_k: int | None = None
+    max_tokens: int | None = None
 
 
 def router() -> APIRouter:
@@ -40,19 +44,21 @@ def router() -> APIRouter:
             f"tools={len(request.tools) if request.tools else 0} "
             f"tenant={ctx.tenant_id}"
         )
+        extra = dict(
+            tools=request.tools,
+            tool_choice=request.tool_choice,
+            temperature=request.temperature,
+            top_p=request.top_p,
+            top_k=request.top_k,
+            max_tokens=request.max_tokens,
+        )
         if request.stream:
-            stream_gen = await service_router.chat_stream(
-                request.model, request.messages, ctx,
-                tools=request.tools, tool_choice=request.tool_choice,
-            )
+            stream_gen = await service_router.chat_stream(request.model, request.messages, ctx, **extra)
             return StreamingResponse(
                 stream_gen,
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
-        return await service_router.chat(
-            request.model, request.messages, ctx,
-            tools=request.tools, tool_choice=request.tool_choice,
-        )
+        return await service_router.chat(request.model, request.messages, ctx, **extra)
 
     return r

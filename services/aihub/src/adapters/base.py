@@ -16,6 +16,10 @@ class ChatAdapter(ABC):
         *,
         tools: list | None = None,
         tool_choice: str | dict | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        max_tokens: int | None = None,
     ) -> ChatResponse: ...
 
     @abstractmethod
@@ -26,6 +30,10 @@ class ChatAdapter(ABC):
         *,
         tools: list | None = None,
         tool_choice: str | dict | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[bytes, None]: ...
 
 

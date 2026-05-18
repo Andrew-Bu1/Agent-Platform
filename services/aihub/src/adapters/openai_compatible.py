@@ -34,12 +34,24 @@ class OpenAICompatibleChatAdapter(ChatAdapter):
         tools: list | None,
         tool_choice: Any | None,
         stream: bool = False,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        max_tokens: int | None = None,
     ) -> dict:
         body: dict[str, Any] = {"model": provider_model_id, "messages": messages}
         if tools:
             body["tools"] = tools
         if tool_choice is not None:
             body["tool_choice"] = tool_choice
+        if temperature is not None:
+            body["temperature"] = temperature
+        if top_p is not None:
+            body["top_p"] = top_p
+        if top_k is not None:
+            body["top_k"] = top_k
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
         if stream:
             body["stream"] = True
             body["stream_options"] = {"include_usage": True}
@@ -52,9 +64,13 @@ class OpenAICompatibleChatAdapter(ChatAdapter):
         *,
         tools: list | None = None,
         tool_choice: Any | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        max_tokens: int | None = None,
     ) -> ChatResponse:
         url = config.endpoint_url or f"{self._base_url}/chat/completions"
-        payload = self._payload(config.provider_model_id, messages, tools, tool_choice)
+        payload = self._payload(config.provider_model_id, messages, tools, tool_choice, temperature=temperature, top_p=top_p, top_k=top_k, max_tokens=max_tokens)
 
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(url, json=payload, headers=self._headers())
@@ -90,9 +106,13 @@ class OpenAICompatibleChatAdapter(ChatAdapter):
         *,
         tools: list | None = None,
         tool_choice: Any | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[bytes, None]:
         url = config.endpoint_url or f"{self._base_url}/chat/completions"
-        payload = self._payload(config.provider_model_id, messages, tools, tool_choice, stream=True)
+        payload = self._payload(config.provider_model_id, messages, tools, tool_choice, stream=True, temperature=temperature, top_p=top_p, top_k=top_k, max_tokens=max_tokens)
 
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream("POST", url, json=payload, headers=self._headers()) as resp:

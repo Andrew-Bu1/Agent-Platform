@@ -82,6 +82,10 @@ class ServiceRouter:
         *,
         tools: list | None = None,
         tool_choice: str | dict | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        max_tokens: int | None = None,
     ) -> ChatResponse:
         config = await self._get_model(model_key, "chat")
         try:
@@ -100,7 +104,7 @@ class ServiceRouter:
         adapter = self._registry.get_chat(config.provider_key)
         start = time.monotonic()
         try:
-            result = await adapter.chat(config, messages, tools=tools, tool_choice=tool_choice)
+            result = await adapter.chat(config, messages, tools=tools, tool_choice=tool_choice, temperature=temperature, top_p=top_p, top_k=top_k, max_tokens=max_tokens)
         except Exception as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
             await self._log_usage(ModelUsageLog(
@@ -138,6 +142,10 @@ class ServiceRouter:
         *,
         tools: list | None = None,
         tool_choice: str | dict | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[bytes, None]:
         config = await self._get_model(model_key, "chat")
         try:
@@ -154,7 +162,7 @@ class ServiceRouter:
             raise
 
         adapter = self._registry.get_chat(config.provider_key)
-        raw = adapter.chat_stream(config, messages, tools=tools, tool_choice=tool_choice)
+        raw = adapter.chat_stream(config, messages, tools=tools, tool_choice=tool_choice, temperature=temperature, top_p=top_p, top_k=top_k, max_tokens=max_tokens)
         return self._wrap_stream_with_usage(raw, config, ctx)
 
     async def _wrap_stream_with_usage(
