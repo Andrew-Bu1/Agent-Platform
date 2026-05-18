@@ -16,44 +16,36 @@ import java.util.List;
 /**
  * RS256 JWT verifier — all services use this to validate tokens issued by IAM.
  *
- * <p>Wire up as a {@code @Bean} using the IAM public key, for example:
- * <pre>
- * &#64;Bean
- * public JwtVerifier jwtVerifier(JwtProperties props, ResourceLoader loader) throws Exception {
- *     RSAPublicKey pub = JwtKeyLoader.loadPublicKey(loader.getResource(props.getPublicKeyPath()));
- *     RSAKey rsaKey = new RSAKey.Builder(pub).keyID(props.getKeyId()).build();
- *     return new JwtVerifier(rsaKey);
- * }
- * </pre>
+ * <p>Two modes:
+ * <ul>
+ *   <li><b>Static</b> — pass a fixed {@link RSAKey}. Simple, but breaks on key rotation.
+ *   <li><b>Dynamic</b> — pass a {@link JwksClient}. Keys are looked up by {@code kid}
+ *       and refreshed on-demand, so key rotation is transparent.
+ * </ul>
+ *
+ * Prefer the dynamic constructor for long-running services.
  */
 public class JwtVerifier {
 
-    private final RSAKey publicKey;
+    private final RSAKey staticKey;
+    private final JwksClient jwksClient;
 
+    /** Static mode: verifies against a fixed public key. */
     public JwtVerifier(RSAKey publicKey) {
-        this.publicKey = publicKey.toPublicJWK(); // ensure no private key material is held
+        this.staticKey = publicKey.toPublicJWK();
+        this.jwksClient = null;
     }
 
-    /**
-     * Parse and verify a compact JWT string (signature + expiry only).
-     *
-     * @param token compact serialized JWT
-     * @return verified {@link JWTClaimsSet}
-     * @throws UnauthorizedException if the token is malformed, has an invalid signature, or is expired
-     */
+    /** Dynamic mode: resolves the signing key from the JWKS endpoint by {@code kid}. */
+    public JwtVerifier(JwksClient jwksClient) {
+        this.staticKey = null;
+        this.jwksClient = jwksClient;
+    }
+
     public JWTClaimsSet verify(String token) {
         return verify(token, null, null);
     }
 
-    /**
-     * Parse and verify a compact JWT string with optional issuer and audience checks.
-     *
-     * @param token            compact serialized JWT
-     * @param expectedIssuer   expected {@code iss} claim; null disables the check
-     * @param expectedAudience expected entry in the {@code aud} claim; null disables the check
-     * @return verified {@link JWTClaimsSet}
-     * @throws UnauthorizedException if the token is malformed, invalid, expired, or fails iss/aud checks
-     */
     public JWTClaimsSet verify(String token, String expectedIssuer, String expectedAudience) {
         SignedJWT jwt;
         try {
@@ -62,8 +54,10 @@ public class JwtVerifier {
             throw new UnauthorizedException(ErrorCode.TOKEN_INVALID, "Malformed JWT");
         }
 
+        RSAKey key = resolveKey(jwt);
+
         try {
-            RSAPublicKey rsaPublicKey = publicKey.toRSAPublicKey();
+            RSAPublicKey rsaPublicKey = key.toRSAPublicKey();
             RSASSAVerifier verifier = new RSASSAVerifier(rsaPublicKey);
             if (!jwt.verify(verifier)) {
                 throw new UnauthorizedException(ErrorCode.TOKEN_INVALID, "JWT signature verification failed");
@@ -98,8 +92,23 @@ public class JwtVerifier {
         return claims;
     }
 
-    /** Returns the public JWK — safe to expose on a JWKS endpoint if needed. */
+    private RSAKey resolveKey(SignedJWT jwt) {
+        if (jwksClient != null) {
+            String kid = jwt.getHeader().getKeyID();
+            if (kid == null || kid.isBlank()) {
+                throw new UnauthorizedException(ErrorCode.TOKEN_INVALID, "Token missing key ID");
+            }
+            RSAKey key = jwksClient.getKey(kid);
+            if (key == null) {
+                throw new UnauthorizedException(ErrorCode.TOKEN_INVALID, "Unknown signing key");
+            }
+            return key;
+        }
+        return staticKey;
+    }
+
+    /** Returns the static public JWK (only valid in static mode). */
     public RSAKey getPublicJwk() {
-        return publicKey;
+        return staticKey;
     }
 }

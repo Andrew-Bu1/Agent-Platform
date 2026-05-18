@@ -160,6 +160,10 @@ func contextFromTrustedHeaders(w http.ResponseWriter, r *http.Request) (context.
 	return ctx, true
 }
 
+// minJWKSRefreshInterval caps how often we hit IAM's JWKS endpoint to prevent
+// DoS via tokens with random unknown kids.
+const minJWKSRefreshInterval = 60 * time.Second
+
 type jwtVerifier struct {
 	jwksURL  string
 	issuer   string
@@ -168,6 +172,11 @@ type jwtVerifier struct {
 
 	mu   sync.RWMutex
 	keys map[string]*rsa.PublicKey
+
+	// loadMu serializes concurrent refresh attempts; lastFetch is only
+	// accessed while loadMu is held.
+	loadMu    sync.Mutex
+	lastFetch time.Time
 }
 
 func newJWTVerifier(jwksURL string) *jwtVerifier {
@@ -252,6 +261,24 @@ func (v *jwtVerifier) key(ctx context.Context, kid string) (*rsa.PublicKey, erro
 		return key, nil
 	}
 
+	// Serialize refresh attempts so only one goroutine hits IAM at a time.
+	v.loadMu.Lock()
+	defer v.loadMu.Unlock()
+
+	// Double-check: another goroutine may have fetched while we waited.
+	v.mu.RLock()
+	key = v.keys[kid]
+	v.mu.RUnlock()
+	if key != nil {
+		return key, nil
+	}
+
+	// Rate-limit: reject unknown kids if we just fetched — prevents DoS via
+	// tokens with random kids hammering the IAM JWKS endpoint.
+	if time.Since(v.lastFetch) < minJWKSRefreshInterval {
+		return nil, errors.New("unknown signing key")
+	}
+
 	if err := v.load(ctx); err != nil {
 		return nil, err
 	}
@@ -306,6 +333,7 @@ func (v *jwtVerifier) load(ctx context.Context) error {
 	v.mu.Lock()
 	v.keys = keys
 	v.mu.Unlock()
+	v.lastFetch = time.Now()
 	return nil
 }
 
