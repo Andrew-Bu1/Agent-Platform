@@ -26,6 +26,9 @@ var nodeTypesHandledByOrchestrator = map[string]bool{
 }
 
 // Engine drives the execution of a single run.
+// It is stateless with respect to goroutines: every method call loads from
+// and writes back to the database, so any orchestrator instance can handle
+// any run.
 type Engine struct {
 	run         *model.Run
 	graph       *model.Graph
@@ -35,8 +38,6 @@ type Engine struct {
 	eventRepo   *repository.RunEventRepository
 	q           *queue.Client
 	nodeQueue   string
-	resultCh    chan model.NodeResult
-	doneCh      chan struct{}
 }
 
 func NewEngine(
@@ -58,52 +59,46 @@ func NewEngine(
 		eventRepo:   eventRepo,
 		q:           q,
 		nodeQueue:   nodeQueue,
-		resultCh:    make(chan model.NodeResult, 32),
-		doneCh:      make(chan struct{}),
 	}
 }
 
-func (e *Engine) ResultCh() chan<- model.NodeResult { return e.resultCh }
-func (e *Engine) DoneCh() <-chan struct{}            { return e.doneCh }
-
-func (e *Engine) Run(ctx context.Context) {
-	defer close(e.doneCh)
-
+// DispatchEntry marks the run as started and dispatches the entry node job.
+// Called once by CreateRun; afterwards the dispatcher handles all NodeResults.
+func (e *Engine) DispatchEntry(ctx context.Context) error {
 	now := time.Now()
 	if err := e.runRepo.SetStarted(ctx, e.run.ID, now); err != nil {
-		log.Printf("[engine] run %s: failed to set started: %v", e.run.ID, err)
+		return fmt.Errorf("set run started: %w", err)
 	}
 	e.emitRunEvent(ctx, nil, "RunStarted", json.RawMessage(`{}`))
 
 	entryNode := e.nodeByID(e.graph.EntryNodeID)
 	if entryNode == nil {
 		e.failRun(ctx, fmt.Sprintf("entry node %q not found in graph", e.graph.EntryNodeID))
-		return
+		return fmt.Errorf("entry node %q not found in graph", e.graph.EntryNodeID)
 	}
 	if err := e.dispatchNode(ctx, entryNode, "main", e.run.InputJSON); err != nil {
 		e.failRun(ctx, fmt.Sprintf("dispatch entry node: %v", err))
-		return
+		return fmt.Errorf("dispatch entry node: %w", err)
 	}
+	return nil
+}
 
-	for {
-		select {
-		case <-ctx.Done():
-			e.failRun(ctx, "context cancelled")
-			return
-		case result, ok := <-e.resultCh:
-			if !ok {
-				return
-			}
-			if err := e.handleResult(ctx, result); err != nil {
-				e.failRun(ctx, err.Error())
-				return
-			}
-			if len(e.state.PendingNodes) == 0 && e.state.HumanWait == nil {
-				e.completeRun(ctx)
-				return
-			}
-		}
+// Advance processes one NodeResult for this run, advances the graph state, and
+// dispatches the next node(s). It is called by the Dispatcher for every result
+// that arrives on the event queue.
+func (e *Engine) Advance(ctx context.Context, result model.NodeResult) error {
+	if err := e.handleResult(ctx, result); err != nil {
+		e.failRun(ctx, err.Error())
+		return err
 	}
+	// Human-review pause: run is now waiting_for_human, nothing more to do.
+	if e.state.HumanWait != nil {
+		return nil
+	}
+	if len(e.state.PendingNodes) == 0 {
+		e.completeRun(ctx)
+	}
+	return nil
 }
 
 func (e *Engine) handleResult(ctx context.Context, result model.NodeResult) error {

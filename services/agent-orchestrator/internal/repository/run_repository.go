@@ -62,6 +62,30 @@ func (r *RunRepository) GetByID(ctx context.Context, id, tenantID, workspaceID u
 	return &run, nil
 }
 
+// GetByIDOnly loads a run by primary key without tenant/workspace scoping.
+// For internal use by the dispatcher when processing queue results.
+func (r *RunRepository) GetByIDOnly(ctx context.Context, id uuid.UUID) (*model.Run, error) {
+	const q = `
+		SELECT id, tenant_id, workspace_id, thread_id,
+		       flow_id, flow_version_id, status,
+		       input_json, state_json, output_json, error_json,
+		       started_at, finished_at, created_at, updated_at
+		FROM runs
+		WHERE id = $1`
+
+	row := r.db.QueryRow(ctx, q, id)
+	var run model.Run
+	if err := row.Scan(
+		&run.ID, &run.TenantID, &run.WorkspaceID, &run.ThreadID,
+		&run.FlowID, &run.FlowVersionID, &run.Status,
+		&run.InputJSON, &run.StateJSON, &run.OutputJSON, &run.ErrorJSON,
+		&run.StartedAt, &run.FinishedAt, &run.CreatedAt, &run.UpdatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("RunRepository.GetByIDOnly: %w", err)
+	}
+	return &run, nil
+}
+
 func (r *RunRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string, finishedAt *time.Time) error {
 	const q = `
 		UPDATE runs SET status = $2, finished_at = $3, updated_at = NOW()

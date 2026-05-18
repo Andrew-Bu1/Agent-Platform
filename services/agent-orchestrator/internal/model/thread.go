@@ -28,13 +28,13 @@ type CreateThreadRequest struct {
 
 type ThreadResponse struct {
 	ID          uuid.UUID       `json:"id"`
-	TenantID    uuid.UUID       `json:"tenant_id"`
-	WorkspaceID uuid.UUID       `json:"workspace_id"`
-	UserID      *uuid.UUID      `json:"user_id,omitempty"`
+	TenantID    uuid.UUID       `json:"tenantId"`
+	WorkspaceID uuid.UUID       `json:"workspaceId"`
+	UserID      *uuid.UUID      `json:"userId,omitempty"`
 	Title       *string         `json:"title,omitempty"`
 	Metadata    json.RawMessage `json:"metadata"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	UpdatedAt   time.Time       `json:"updatedAt"`
 }
 
 func ThreadToResponse(t *Thread) *ThreadResponse {

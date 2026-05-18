@@ -19,7 +19,6 @@ type RunService struct {
 	eventRepo       *repository.RunEventRepository
 	flowVersionRepo *repository.FlowVersionRepository
 	q               *queue.Client
-	dispatcher      *engine.Dispatcher
 	nodeQueue       string
 }
 
@@ -29,7 +28,6 @@ func NewRunService(
 	eventRepo *repository.RunEventRepository,
 	flowVersionRepo *repository.FlowVersionRepository,
 	q *queue.Client,
-	dispatcher *engine.Dispatcher,
 	nodeQueue string,
 ) *RunService {
 	return &RunService{
@@ -38,7 +36,6 @@ func NewRunService(
 		eventRepo:       eventRepo,
 		flowVersionRepo: flowVersionRepo,
 		q:               q,
-		dispatcher:      dispatcher,
 		nodeQueue:       nodeQueue,
 	}
 }
@@ -91,8 +88,9 @@ func (s *RunService) CreateRun(
 	graph.PopulateNodeIDs()
 
 	eng := engine.NewEngine(run, &graph, initState, s.runRepo, s.nodeRunRepo, s.eventRepo, s.q, s.nodeQueue)
-	s.dispatcher.Register(eng)
-	go eng.Run(context.Background())
+	if err := eng.DispatchEntry(ctx); err != nil {
+		return nil, fmt.Errorf("dispatch entry: %w", err)
+	}
 
 	return toRunResponse(run), nil
 }
@@ -233,8 +231,8 @@ func (s *RunService) ResumeHumanReview(
 		Status:     "completed",
 		OutputJSON: output,
 	}
-	if !s.dispatcher.Resume(runID, result) {
-		return fmt.Errorf("engine not active for run %s — it may have been restarted", runID)
+	if err := s.q.PushNodeResult(ctx, result); err != nil {
+		return fmt.Errorf("push resume result: %w", err)
 	}
 	return nil
 }

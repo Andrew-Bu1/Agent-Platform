@@ -44,15 +44,15 @@ func main() {
 	defer q.Close()
 	log.Println("redis ready")
 
-	// Dispatcher — routes NodeResults from Redis to the correct engine.
-	dispatcher := engine.NewDispatcher(q, cfg.WorkerCount)
+	// Dispatcher — stateless poll loop; any instance can advance any run.
+	dispatcher := engine.NewDispatcher(q, runRepo, nodeRunRepo, eventRepo, flowVersionRepo, cfg.NodeQueue, cfg.WorkerCount)
 	dispatcher.Start(ctx)
 	log.Printf("event dispatcher started (%d workers)", cfg.WorkerCount)
 
 	// Service + handler
 	runSvc := service.NewRunService(
 		runRepo, nodeRunRepo, eventRepo, flowVersionRepo,
-		q, dispatcher, cfg.NodeQueue,
+		q, cfg.NodeQueue,
 	)
 	runHandler := handler.NewRunHandler(runSvc)
 

@@ -57,6 +57,19 @@ func (q *Client) BLPopNodeResult(ctx context.Context, timeout time.Duration) (st
 	return results[1], nil
 }
 
+// PushNodeResult serialises a NodeResult and appends it to the event queue.
+// Used internally (e.g., after human review) to re-enter the processing pipeline.
+func (q *Client) PushNodeResult(ctx context.Context, result model.NodeResult) error {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("queue.PushNodeResult marshal: %w", err)
+	}
+	if err := q.client.RPush(ctx, q.eventQueue, data).Err(); err != nil {
+		return fmt.Errorf("queue.PushNodeResult rpush: %w", err)
+	}
+	return nil
+}
+
 // PushDLQ pushes a failed payload to the dead-letter queue.
 func (q *Client) PushDLQ(ctx context.Context, sourceQueue, rawPayload, errMsg string) {
 	entry := model.DLQEntry{
