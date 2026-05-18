@@ -34,10 +34,11 @@ public class OrchestratorProxyService {
 
     public JsonNode get(String path) {
         try {
-            return orchestratorClient.get()
+            JsonNode raw = orchestratorClient.get()
                     .uri(path)
                     .retrieve()
                     .body(JsonNode.class);
+            return unwrap(raw);
         } catch (HttpClientErrorException e) {
             throw mapClientError(e);
         }
@@ -45,12 +46,13 @@ public class OrchestratorProxyService {
 
     public JsonNode post(String path, Object body) {
         try {
-            return orchestratorClient.post()
+            JsonNode raw = orchestratorClient.post()
                     .uri(path)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
                     .body(JsonNode.class);
+            return unwrap(raw);
         } catch (HttpClientErrorException e) {
             throw mapClientError(e);
         }
@@ -111,13 +113,20 @@ public class OrchestratorProxyService {
 
     public JsonNode delete(String path) {
         try {
-            return orchestratorClient.delete()
+            JsonNode raw = orchestratorClient.delete()
                     .uri(path)
                     .retrieve()
                     .body(JsonNode.class);
+            return unwrap(raw);
         } catch (HttpClientErrorException e) {
             throw mapClientError(e);
         }
+    }
+
+    /** Unwraps the orchestrator's {success, data} envelope, returning just the data node. */
+    private static JsonNode unwrap(JsonNode raw) {
+        if (raw != null && raw.has("data")) return raw.get("data");
+        return raw;
     }
 
     /**
