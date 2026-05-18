@@ -7,9 +7,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Thin proxy for the AIHub service (bearer forwarded).
@@ -79,6 +86,39 @@ public class AihubProxyService {
                     .body(JsonNode.class);
         } catch (HttpClientErrorException e) {
             throw mapClientError(e);
+        }
+    }
+
+    /**
+     * Streams an SSE chat response from AIHub to the given SseEmitter.
+     * The body must include {@code "stream": true}.
+     */
+    @Async("sseProxyExecutor")
+    public void chatStream(String path, Object body, SseEmitter emitter) {
+        try {
+            aihubClient.post()
+                    .uri(path)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.TEXT_EVENT_STREAM)
+                    .body(body)
+                    .exchange((req, resp) -> {
+                        try (BufferedReader reader = new BufferedReader(
+                                new InputStreamReader(resp.getBody(), StandardCharsets.UTF_8))) {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                if (line.startsWith("data:")) {
+                                    String data = line.substring("data:".length()).trim();
+                                    emitter.send(SseEmitter.event().data(data, MediaType.TEXT_PLAIN));
+                                }
+                            }
+                        } catch (IOException e) {
+                            emitter.completeWithError(e);
+                        }
+                        return null;
+                    });
+            emitter.complete();
+        } catch (Exception e) {
+            emitter.completeWithError(e);
         }
     }
 

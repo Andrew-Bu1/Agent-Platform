@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.UUID;
 
@@ -34,8 +36,15 @@ public class AihubProxyController {
     // ── Models ────────────────────────────────────────────────────────────────
 
     @GetMapping("/models")
-    public ApiResponse<JsonNode> listModels(@AuthenticationPrincipal AuthContext auth) {
-        return ApiResponse.ok(aihubProxy.get("/v1/models"));
+    public ApiResponse<JsonNode> listModels(
+            @AuthenticationPrincipal AuthContext auth,
+            @RequestParam(name = "operation_type", required = false) String operationType,
+            @RequestParam(name = "provider_key",   required = false) String providerKey) {
+        String path = UriComponentsBuilder.fromPath("/v1/models")
+                .queryParamIfPresent("operation_type",  java.util.Optional.ofNullable(operationType))
+                .queryParamIfPresent("provider_key",    java.util.Optional.ofNullable(providerKey))
+                .build().toUriString();
+        return ApiResponse.ok(aihubProxy.get(path));
     }
 
     @GetMapping("/models/{id}")
@@ -89,6 +98,20 @@ public class AihubProxyController {
     @DeleteMapping("/providers/{id}")
     public ApiResponse<JsonNode> deleteProvider(@AuthenticationPrincipal AuthContext auth, @PathVariable UUID id) {
         return ApiResponse.ok(aihubProxy.delete("/v1/providers/" + id));
+    }
+
+    // ── Chat ──────────────────────────────────────────────────────────────────
+
+    @PostMapping("/chat")
+    public ApiResponse<JsonNode> chat(@AuthenticationPrincipal AuthContext auth, @RequestBody JsonNode body) {
+        return ApiResponse.ok(aihubProxy.post("/v1/chat", body));
+    }
+
+    @PostMapping(value = "/chat/stream", produces = "text/event-stream")
+    public SseEmitter chatStream(@AuthenticationPrincipal AuthContext auth, @RequestBody JsonNode body) {
+        SseEmitter emitter = new SseEmitter(120_000L);
+        aihubProxy.chatStream("/v1/chat", body, emitter);
+        return emitter;
     }
 
     // ── Usage logs ────────────────────────────────────────────────────────────
