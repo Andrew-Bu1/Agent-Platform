@@ -5,6 +5,8 @@ import type {
   WorkspacesRequest,
   WorkspaceInfo,
   SwitchContextRequest,
+  SwitchRequest,
+  ChangePasswordRequest,
   TokenResponse,
   UserProfile,
   SignupRequest,
@@ -43,6 +45,14 @@ export const authApi = {
 
   /** Logout all sessions (requires auth) */
   logoutAll: () => api.post<void>('/auth/logout'),
+
+  /** Switch tenant + workspace while already authenticated */
+  switch: (body: SwitchRequest) =>
+    api.post<TokenResponse>('/auth/switch', body),
+
+  /** Change current user's password (revokes all sessions) */
+  changePassword: (body: ChangePasswordRequest) =>
+    api.patch<void>('/auth/me/password', body),
 
   /** Get current user profile */
   me: () => api.get<UserProfile>('/auth/me'),

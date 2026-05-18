@@ -93,12 +93,6 @@ const API_GROUPS: ApiGroup[] = [
     ],
   },
   {
-    label: 'Memory', icon: Brain, color: 'text-pink-600',
-    endpoints: [
-      { method: 'GET', path: '/api/v1/memory/**', description: 'Memory proxy — coming soon', auth: true },
-    ],
-  },
-  {
     label: 'Templates', icon: LayoutTemplate, color: 'text-indigo-600',
     endpoints: [
       { method: 'GET', path: '/api/v1/templates/**', description: 'Templates — coming soon', auth: true },

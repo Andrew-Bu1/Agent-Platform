@@ -16,7 +16,7 @@ export class ApiError extends Error {
 
 let refreshing: Promise<boolean> | null = null;
 
-async function tryRefresh(): Promise<boolean> {
+export async function tryRefresh(): Promise<boolean> {
   if (refreshing) return refreshing;
 
   refreshing = (async () => {
@@ -57,8 +57,9 @@ async function request<T>(
 ): Promise<T> {
   const { accessToken } = useAuthStore.getState();
 
+  const isMultipart = init.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isMultipart ? {} : { 'Content-Type': 'application/json' }),
     ...(init.headers as Record<string, string>),
   };
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
@@ -122,4 +123,79 @@ export const api = {
     }),
 
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+
+  /** Upload a file via multipart/form-data. */
+  upload: <T>(path: string, formData: FormData) =>
+    request<T>(path, { method: 'POST', body: formData }),
 };
+
+// ─── Client factory for other service bases ───────────────────────────────────
+// Used by aihub.ts and datahub.ts which talk to different backends.
+
+export function createApiClient(base: string) {
+  async function serviceRequest<T>(
+    path: string,
+    init: RequestInit = {},
+    isRetry = false,
+  ): Promise<T> {
+    const { accessToken } = useAuthStore.getState();
+
+    const isMultipart = init.body instanceof FormData;
+    const headers: Record<string, string> = {
+      ...(isMultipart ? {} : { 'Content-Type': 'application/json' }),
+      ...(init.headers as Record<string, string>),
+    };
+    if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+
+    const res = await fetch(`${base}${path}`, { ...init, headers });
+
+    if (res.status === 401 && !isRetry) {
+      const ok = await tryRefresh();
+      if (ok) return serviceRequest<T>(path, init, true);
+      useAuthStore.getState().clearAuth();
+      window.location.href = '/login';
+      throw new ApiError('UNAUTHORIZED', 'Session expired');
+    }
+
+    if (!res.ok) {
+      // Services outside the BFF may return plain JSON errors, not the ApiResponse envelope.
+      let message = res.statusText;
+      try {
+        const body = await res.clone().json();
+        message = body.message ?? body.error ?? body.detail ?? message;
+      } catch { /* ignore */ }
+      throw new ApiError(String(res.status), message);
+    }
+
+    if (res.status === 204) return undefined as T;
+    return res.json() as Promise<T>;
+  }
+
+  return {
+    get: <T>(path: string) => serviceRequest<T>(path, { method: 'GET' }),
+
+    post: <T>(path: string, body?: unknown) =>
+      serviceRequest<T>(path, {
+        method: 'POST',
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      }),
+
+    put: <T>(path: string, body?: unknown) =>
+      serviceRequest<T>(path, {
+        method: 'PUT',
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      }),
+
+    patch: <T>(path: string, body?: unknown) =>
+      serviceRequest<T>(path, {
+        method: 'PATCH',
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      }),
+
+    delete: <T>(path: string) => serviceRequest<T>(path, { method: 'DELETE' }),
+
+    /** Upload a file via multipart/form-data. */
+    upload: <T>(path: string, formData: FormData) =>
+      serviceRequest<T>(path, { method: 'POST', body: formData }),
+  };
+}

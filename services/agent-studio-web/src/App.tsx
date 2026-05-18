@@ -1,66 +1,111 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import {
-  Bot, GitBranch, Users, Wrench, BookOpen, Brain, LayoutTemplate,
-  Play, Activity, CheckCircle, BarChart2, ScrollText, Rocket, Shield, Settings,
+  CheckCircle, ScrollText,
 } from 'lucide-react';
 import { useAuthStore } from './store/authStore';
+import { tryRefresh } from './api/client';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import DashboardPage from './pages/DashboardPage';
 import PlaceholderPage from './pages/PlaceholderPage';
+import SettingsPage from './pages/SettingsPage';
+import AgentsPage from './pages/AgentsPage';
+import ToolsPage from './pages/ToolsPage';
+import WorkflowsPage from './pages/WorkflowsPage';
+import RunsPage from './pages/RunsPage';
+import AccessControlPage from './pages/AccessControlPage';
+import DatasourcesPage from './pages/DatasourcesPage';
+import ModelsPage from './pages/ModelsPage';
+import FlowEditorPage from './pages/FlowEditorPage';
+import ChatPage from './pages/ChatPage';
+import PlatformPage from './pages/PlatformPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import TracesPage from './pages/TracesPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken, refreshToken } = useAuthStore();
-  // Allow in if we have at least a refresh token (will re-hydrate on first request)
+  const needsRefresh = !accessToken && !!refreshToken;
+  const [initializing, setInitializing] = useState(needsRefresh);
+
+  useEffect(() => {
+    if (needsRefresh) {
+      tryRefresh().finally(() => setInitializing(false));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (initializing) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="w-8 h-8 animate-spin rounded-full border-2 border-gray-200 border-t-blue-600" />
+      </div>
+    );
+  }
+
   if (!accessToken && !refreshToken) {
     return <Navigate to="/login" replace />;
   }
+
   return <>{children}</>;
 }
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
 
-        <Route
-          element={
-            <RequireAuth>
-              <Layout />
-            </RequireAuth>
-          }
-        >
-          {/* Dashboard = API overview */}
-          <Route index element={<DashboardPage />} />
+          {/* Full-screen canvas editor — outside Layout */}
+          <Route
+            path="/workflows/:flowId/edit"
+            element={
+              <RequireAuth>
+                <FlowEditorPage />
+              </RequireAuth>
+            }
+          />
 
-          {/* Build */}
-          <Route path="workflows" element={<PlaceholderPage title="Workflows" description="Design and manage agent workflows on the canvas. Coming next." icon={GitBranch} color="text-violet-600" />} />
-          <Route path="agents"    element={<PlaceholderPage title="Agents"    description="Create and configure AI agents with tools and models."        icon={Bot}           color="text-blue-600"   />} />
-          <Route path="teams"     element={<PlaceholderPage title="Teams"     description="Compose multi-agent teams with routing and coordination."      icon={Users}         color="text-teal-600"   />} />
-          <Route path="tools"     element={<PlaceholderPage title="Tools"     description="Register API tools and functions available to agents."         icon={Wrench}        color="text-orange-600" />} />
-          <Route path="knowledge" element={<PlaceholderPage title="Knowledge" description="Manage document collections for retrieval-augmented agents."   icon={BookOpen}      color="text-emerald-600"/>} />
-          <Route path="memory"    element={<PlaceholderPage title="Memory"    description="Persistent memory stores for long-running agent sessions."      icon={Brain}         color="text-pink-600"   />} />
-          <Route path="templates" element={<PlaceholderPage title="Templates" description="Pre-built workflow patterns to accelerate development."         icon={LayoutTemplate}color="text-indigo-600" />} />
+          <Route
+            element={
+              <RequireAuth>
+                <Layout />
+              </RequireAuth>
+            }
+          >
+            {/* Dashboard */}
+            <Route index element={<DashboardPage />} />
 
-          {/* Observe */}
-          <Route path="runs"        element={<PlaceholderPage title="Runs"        description="Monitor live and historical workflow execution runs."       icon={Play}        color="text-purple-600" />} />
-          <Route path="traces"      element={<PlaceholderPage title="Traces"      description="Distributed traces across nodes and agents."               icon={Activity}    color="text-cyan-600"   />} />
-          <Route path="evaluations" element={<PlaceholderPage title="Evaluations" description="Score and compare agent outputs against benchmarks."        icon={CheckCircle} color="text-yellow-600" />} />
-          <Route path="analytics"   element={<PlaceholderPage title="Analytics"   description="Usage metrics, token costs, and performance dashboards."    icon={BarChart2}   color="text-rose-600"   />} />
-          <Route path="logs"        element={<PlaceholderPage title="Logs"        description="Structured logs from all services."                         icon={ScrollText}  color="text-slate-600"  />} />
+            {/* Build */}
+            <Route path="workflows" element={<WorkflowsPage />} />
+            <Route path="agents"    element={<AgentsPage />} />
+            <Route path="tools"     element={<ToolsPage />} />
+            <Route path="knowledge"    element={<Navigate to="/datasources" replace />} />
+            <Route path="datasources" element={<DatasourcesPage />} />
 
-          {/* Manage */}
-          <Route path="deployments"    element={<PlaceholderPage title="Deployments"    description="Deploy agents and workflows to production environments." icon={Rocket}  color="text-red-600"  />} />
-          <Route path="access-control" element={<PlaceholderPage title="Access Control" description="Manage tenants, workspaces, members and roles."         icon={Shield}  color="text-gray-700" />} />
-          <Route path="settings"       element={<PlaceholderPage title="Settings"       description="Application and workspace configuration."                icon={Settings}color="text-gray-600" />} />
+            {/* Observe */}
+            <Route path="chat"        element={<ChatPage />} />
+            <Route path="runs"        element={<RunsPage />} />
+            <Route path="traces"      element={<TracesPage />} />
+            <Route path="evaluations" element={<PlaceholderPage title="Evaluations" description="Score and compare agent outputs against benchmarks."        icon={CheckCircle} color="text-yellow-600" />} />
+            <Route path="analytics"   element={<AnalyticsPage />} />
+            <Route path="logs"        element={<PlaceholderPage title="Logs"        description="Structured logs from all services."                         icon={ScrollText}  color="text-slate-600"  />} />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+            {/* Manage */}
+            <Route path="models"          element={<ModelsPage />} />
+            <Route path="platform"        element={<PlatformPage />} />
+            <Route path="access-control" element={<AccessControlPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

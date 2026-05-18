@@ -9,7 +9,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/teams':         'Teams',
   '/tools':         'Tools',
   '/knowledge':     'Knowledge',
-  '/memory':        'Memory',
   '/templates':     'Templates',
   '/runs':          'Runs',
   '/traces':        'Traces',
@@ -17,6 +16,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/analytics':     'Analytics',
   '/logs':          'Logs',
   '/deployments':   'Deployments',
+  '/platform':      'Platform Admin',
   '/access-control':'Access Control',
   '/settings':      'Settings',
 };

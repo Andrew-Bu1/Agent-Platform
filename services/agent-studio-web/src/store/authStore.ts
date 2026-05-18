@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { TokenResponse, TenantInfo, WorkspaceInfo } from '../types/api';
+import type { TokenResponse, TenantInfo, WorkspaceInfo, UserProfile } from '../types/api';
 
 interface AuthState {
   // Tokens — accessToken kept in memory only; refreshToken persisted
@@ -11,15 +11,19 @@ interface AuthState {
   userId: string | null;
   tenantId: string | null;
   workspaceId: string | null;
-  expiresAt: number | null; // unix ms
+  expiresAt: number | null;
 
   // User-friendly display info (populated after login)
   selectedTenant: TenantInfo | null;
   selectedWorkspace: WorkspaceInfo | null;
 
+  // User profile (fetched from /auth/me after login)
+  userProfile: UserProfile | null;
+
   // Actions
   setTokens: (tokens: TokenResponse) => void;
   setContext: (tenant: TenantInfo, workspace: WorkspaceInfo) => void;
+  setUserProfile: (profile: UserProfile) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
 }
@@ -35,6 +39,7 @@ export const useAuthStore = create<AuthState>()(
       expiresAt: null,
       selectedTenant: null,
       selectedWorkspace: null,
+      userProfile: null,
 
       setTokens: (tokens) =>
         set({
@@ -49,6 +54,8 @@ export const useAuthStore = create<AuthState>()(
       setContext: (tenant, workspace) =>
         set({ selectedTenant: tenant, selectedWorkspace: workspace }),
 
+      setUserProfile: (profile) => set({ userProfile: profile }),
+
       clearAuth: () =>
         set({
           accessToken: null,
@@ -59,6 +66,7 @@ export const useAuthStore = create<AuthState>()(
           expiresAt: null,
           selectedTenant: null,
           selectedWorkspace: null,
+          userProfile: null,
         }),
 
       isAuthenticated: () => {
@@ -70,8 +78,6 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'agent-studio-auth',
-      // Only persist the refresh token and context identifiers;
-      // access token is re-acquired on load via the refresh endpoint.
       partialize: (state) => ({
         refreshToken: state.refreshToken,
         userId: state.userId,
@@ -79,6 +85,7 @@ export const useAuthStore = create<AuthState>()(
         workspaceId: state.workspaceId,
         selectedTenant: state.selectedTenant,
         selectedWorkspace: state.selectedWorkspace,
+        userProfile: state.userProfile,
       }),
     },
   ),

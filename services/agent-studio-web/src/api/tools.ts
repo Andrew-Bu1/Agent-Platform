@@ -11,7 +11,7 @@ export const toolsApi = {
   create: (body: CreateToolRequest) =>
     api.post<Tool>('/tools', body),
 
-  update: (id: string, body: Partial<CreateToolRequest>) =>
+  update: (id: string, body: Partial<CreateToolRequest> & { status?: string }) =>
     api.put<Tool>(`/tools/${id}`, body),
 
   delete: (id: string) =>

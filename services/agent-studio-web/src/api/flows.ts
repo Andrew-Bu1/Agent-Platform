@@ -17,21 +17,24 @@ export const flowsApi = {
   create: (body: CreateFlowRequest) =>
     api.post<Flow>('/flows', body),
 
-  update: (id: string, body: Partial<CreateFlowRequest>) =>
+  update: (id: string, body: Partial<CreateFlowRequest> & { status?: string }) =>
     api.put<Flow>(`/flows/${id}`, body),
 
   delete: (id: string) =>
     api.delete<void>(`/flows/${id}`),
 
-  publish: (id: string) =>
-    api.post<Flow>(`/flows/${id}/publish`),
+  listVersions: (id: string, page = 0, size = 20) =>
+    api.get<PageResponse<FlowVersion>>(`/flows/${id}/versions?page=${page}&size=${size}`),
 
-  listVersions: (id: string) =>
-    api.get<FlowVersion[]>(`/flows/${id}/versions`),
+  getVersion: (id: string, versionId: string) =>
+    api.get<FlowVersion>(`/flows/${id}/versions/${versionId}`),
 
-  getVersion: (id: string, version: number) =>
-    api.get<FlowVersion>(`/flows/${id}/versions/${version}`),
-
-  saveVersion: (id: string, body: SaveFlowVersionRequest) =>
+  createVersion: (id: string, body: SaveFlowVersionRequest) =>
     api.post<FlowVersion>(`/flows/${id}/versions`, body),
+
+  updateVersion: (id: string, versionId: string, body: SaveFlowVersionRequest) =>
+    api.put<FlowVersion>(`/flows/${id}/versions/${versionId}`, body),
+
+  publishVersion: (id: string, versionId: string) =>
+    api.post<FlowVersion>(`/flows/${id}/versions/${versionId}/publish`),
 };

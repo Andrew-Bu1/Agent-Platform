@@ -1,8 +1,11 @@
 import { api } from './client';
 import { useAuthStore } from '../store/authStore';
-import type { Run, CreateRunRequest } from '../types/api';
+import type { Run, NodeRun, CreateRunRequest, PageResponse } from '../types/api';
 
 export const runsApi = {
+  list: (page = 0, size = 20) =>
+    api.get<PageResponse<Run>>(`/orchestrator/runs?page=${page}&size=${size}`),
+
   create: (body: CreateRunRequest) =>
     api.post<Run>('/orchestrator/runs', body),
 
@@ -10,13 +13,16 @@ export const runsApi = {
     api.get<Run>(`/orchestrator/runs/${id}`),
 
   cancel: (id: string) =>
-    api.post<Run>(`/orchestrator/runs/${id}/cancel`),
+    api.post<{ status: string }>(`/orchestrator/runs/${id}/cancel`),
 
-  resume: (id: string, body: Record<string, unknown>) =>
-    api.post<Run>(`/orchestrator/runs/${id}/resume`, body),
+  resume: (id: string, taskId: string, output: Record<string, unknown>) =>
+    api.post<{ status: string }>(`/orchestrator/runs/${id}/resume`, { task_id: taskId, output }),
 
   pendingReview: () =>
     api.get<Run[]>('/orchestrator/runs/pending-review'),
+
+  listNodeRuns: (id: string) =>
+    api.get<NodeRun[]>(`/orchestrator/runs/${id}/node-runs`),
 
   /**
    * Stream run events via SSE.
