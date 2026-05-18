@@ -52,6 +52,7 @@ public class FlowController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<FlowDto> create(@AuthenticationPrincipal AuthContext auth,
                                        @Valid @RequestBody CreateFlowRequest req) {
+        auth.requirePermission("agent_studio.flows");
         return ApiResponse.ok(FlowDto.from(flowService.create(auth, req.getName(), req.getDescription())));
     }
 

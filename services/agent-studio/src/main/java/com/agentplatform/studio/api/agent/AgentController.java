@@ -52,6 +52,7 @@ public class AgentController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<AgentDto> create(@AuthenticationPrincipal AuthContext auth,
                                         @Valid @RequestBody CreateAgentRequest req) {
+        auth.requirePermission("agent_studio.agents");
         var agent = agentService.create(auth,
                 req.getName(),
                 req.getDescription(),

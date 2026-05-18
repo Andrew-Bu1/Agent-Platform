@@ -52,6 +52,7 @@ public class ToolController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ToolDto> create(@AuthenticationPrincipal AuthContext auth,
                                        @Valid @RequestBody CreateToolRequest req) {
+        auth.requirePermission("agent_studio.tools");
         var tool = toolService.create(auth,
                 req.getName(),
                 req.getDescription(),
