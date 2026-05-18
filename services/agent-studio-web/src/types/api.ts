@@ -568,6 +568,41 @@ export interface UpdateModelConfigRequest {
   is_active?: boolean;
 }
 
+// ─── AIHub — Chat ─────────────────────────────────────────────────────────────
+
+export interface AihubChatMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string | null;
+  tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
+}
+
+export interface AihubChatUsage {
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+}
+
+export interface AihubChatResponse {
+  id: string;
+  model: string;
+  choices: Array<{
+    index: number;
+    message: AihubChatMessage;
+    finish_reason: string | null;
+  }>;
+  usage: AihubChatUsage | null;
+}
+
+export interface AihubChatStreamDelta {
+  choices: Array<{
+    index: number;
+    delta: { role?: string; content?: string | null };
+    finish_reason: string | null;
+  }>;
+  usage?: AihubChatUsage | null;
+}
+
 // ─── AIHub — Model Usage Logs ─────────────────────────────────────────────────
 
 export interface ModelUsageLog {

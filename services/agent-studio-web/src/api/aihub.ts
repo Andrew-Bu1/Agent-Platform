@@ -1,4 +1,5 @@
 import { api } from './client';
+import { useAuthStore } from '../store/authStore';
 import type {
   Provider,
   CreateProviderRequest,
@@ -9,6 +10,8 @@ import type {
   ModelUsageLog,
   ModelOperationType,
   PlatformUsageSummary,
+  AihubChatMessage,
+  AihubChatResponse,
 } from '../types/api';
 
 // All requests go through the agent-studio BFF at /api/v1/aihub/...
@@ -72,6 +75,62 @@ export const modelUsageLogsApi = {
     if (params?.offset != null) qs.set('offset', String(params.offset));
     const suffix = qs.size ? `?${qs}` : '';
     return api.get<ModelUsageLog[]>(`/aihub/model-usage-logs${suffix}`);
+  },
+};
+
+// ─── Chat (playground) ───────────────────────────────────────────────────────
+
+export const chatApi = {
+  send: (model: string, messages: AihubChatMessage[]) =>
+    api.post<AihubChatResponse>('/aihub/chat', { model, messages, stream: false }),
+
+  /** Opens an SSE stream for a chat request. Returns an EventSource-like reader. */
+  stream: (model: string, messages: AihubChatMessage[], onChunk: (text: string) => void, onDone: (usage?: { prompt_tokens?: number | null; completion_tokens?: number | null }) => void, onError: (err: string) => void): (() => void) => {
+    const { accessToken } = useAuthStore.getState();
+    const ctrl = new AbortController();
+
+    fetch('/api/v1/aihub/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify({ model, messages, stream: true }),
+      signal: ctrl.signal,
+    }).then(async (res) => {
+      if (!res.ok) {
+        onError(`HTTP ${res.status}`);
+        return;
+      }
+      const reader = res.body?.getReader();
+      if (!reader) { onError('No response body'); return; }
+      const dec = new TextDecoder();
+      let lastUsage: { prompt_tokens?: number | null; completion_tokens?: number | null } | undefined;
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === 'data: [DONE]') continue;
+          const raw = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
+          try {
+            const chunk = JSON.parse(raw);
+            const content = chunk?.choices?.[0]?.delta?.content;
+            if (typeof content === 'string') onChunk(content);
+            if (chunk?.usage) lastUsage = chunk.usage;
+          } catch { /* ignore malformed */ }
+        }
+      }
+      onDone(lastUsage);
+    }).catch((err) => {
+      if (err?.name !== 'AbortError') onError(String(err));
+    });
+
+    return () => ctrl.abort();
   },
 };
 

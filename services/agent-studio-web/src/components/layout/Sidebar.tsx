@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   Bot, GitBranch, Wrench, Database,
   MessageSquare, Activity, BarChart2, Shield, Settings,
-  ChevronLeft, ChevronRight, Cpu, Crown,
+  ChevronLeft, ChevronRight, Cpu, Crown, FlaskConical,
 } from 'lucide-react';
 import { useState } from 'react';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
@@ -31,9 +31,10 @@ const NAV: NavSection[] = [
   {
     title: 'Observe',
     items: [
-      { label: 'Chat',      to: '/chat',      icon: MessageSquare },
-      { label: 'Traces',    to: '/traces',    icon: Activity },
-      { label: 'Analytics', to: '/analytics', icon: BarChart2 },
+      { label: 'Chat',       to: '/chat',       icon: MessageSquare },
+      { label: 'Playground', to: '/playground', icon: FlaskConical },
+      { label: 'Traces',     to: '/traces',     icon: Activity },
+      { label: 'Analytics',  to: '/analytics',  icon: BarChart2 },
     ],
   },
   {

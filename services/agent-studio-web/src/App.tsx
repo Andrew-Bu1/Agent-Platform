@@ -21,6 +21,7 @@ import DatasourcesPage from './pages/DatasourcesPage';
 import ModelsPage from './pages/ModelsPage';
 import FlowEditorPage from './pages/FlowEditorPage';
 import ChatPage from './pages/ChatPage';
+import ModelPlaygroundPage from './pages/ModelPlaygroundPage';
 import PlatformPage from './pages/PlatformPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import TracesPage from './pages/TracesPage';
@@ -89,6 +90,7 @@ export default function App() {
 
             {/* Observe */}
             <Route path="chat"        element={<ChatPage />} />
+            <Route path="playground"  element={<ModelPlaygroundPage />} />
             <Route path="runs"        element={<RunsPage />} />
             <Route path="traces"      element={<TracesPage />} />
             <Route path="evaluations" element={<PlaceholderPage title="Evaluations" description="Score and compare agent outputs against benchmarks."        icon={CheckCircle} color="text-yellow-600" />} />
