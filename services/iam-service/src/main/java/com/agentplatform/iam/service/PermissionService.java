@@ -5,6 +5,8 @@ import com.agentplatform.common.exception.ErrorCode;
 import com.agentplatform.common.exception.ForbiddenException;
 import com.agentplatform.common.exception.NotFoundException;
 import com.agentplatform.iam.entity.Permission;
+import com.agentplatform.iam.repository.FeatureEntitlementRepository;
+import com.agentplatform.iam.repository.FeatureRepository;
 import com.agentplatform.iam.repository.PermissionRepository;
 import com.agentplatform.iam.repository.RolePermissionRepository;
 import com.agentplatform.iam.repository.ServiceClientPermissionRepository;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,21 +26,39 @@ public class PermissionService {
     private final PermissionRepository              permissionRepo;
     private final RolePermissionRepository          rolePermissionRepo;
     private final ServiceClientPermissionRepository serviceClientPermissionRepo;
+    private final FeatureEntitlementRepository      featureEntitlementRepo;
+    private final FeatureRepository                 featureRepo;
     private final TenantService                     tenantService;
 
     // ── JWT helpers (used by AuthService / OauthService) ─────────────────────
 
     @Transactional(readOnly = true)
     public List<String> collectUserPermissions(UUID userId, UUID tenantId, UUID workspaceId) {
-        if (workspaceId != null) {
-            return permissionRepo.findUserPermissions(userId, tenantId, workspaceId);
-        }
-        return permissionRepo.findTenantPermissions(userId, tenantId);
+        List<String> permissions = new ArrayList<>(workspaceId != null
+                ? permissionRepo.findUserPermissions(userId, tenantId, workspaceId)
+                : permissionRepo.findTenantPermissions(userId, tenantId));
+        permissions.addAll(enabledFeatureKeys(tenantId));
+        return permissions;
     }
 
     @Transactional(readOnly = true)
-    public List<String> collectServiceClientPermissions(String clientId) {
-        return permissionRepo.findServiceClientPermissions(clientId);
+    public List<String> collectServiceClientPermissions(String clientId, UUID tenantId) {
+        List<String> permissions = new ArrayList<>(permissionRepo.findServiceClientPermissions(clientId));
+        if (tenantId != null) {
+            permissions.addAll(enabledFeatureKeys(tenantId));
+        }
+        return permissions;
+    }
+
+    /** Returns the feature keys that are currently enabled for the given tenant. */
+    private List<String> enabledFeatureKeys(UUID tenantId) {
+        var entitlements = featureEntitlementRepo.findEnabledByTenantId(tenantId);
+        if (entitlements.isEmpty()) return List.of();
+        var featureIds = entitlements.stream()
+                .map(e -> e.getFeatureId()).toList();
+        return featureRepo.findAllById(featureIds).stream()
+                .map(f -> f.getKey())
+                .toList();
     }
 
     // ── CRUD ─────────────────────────────────────────────────────────────────

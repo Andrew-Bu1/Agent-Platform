@@ -40,7 +40,7 @@ public class OauthService {
             throw new UnauthorizedException(ErrorCode.INVALID_CREDENTIALS, "Invalid client secret");
         }
 
-        List<String> permissions = permissionService.collectServiceClientPermissions(clientId);
+        List<String> permissions = permissionService.collectServiceClientPermissions(clientId, client.getTenantId());
         JwtClaims claims = tokenService.buildServiceClientTokenClaims(client, permissions);
         String accessToken = jwtIssuer.issueAccessToken(claims);
 
