@@ -87,6 +87,11 @@ class EntitlementGuard:
         self._cache = EntitlementCache(iam_base_url)
         self._redis = redis
 
+    async def get_allowed_keys(self, tenant_id: UUID, bearer_token: str) -> set[tuple[str, str]]:
+        """Return the set of (model_key, operation_type) pairs the tenant is allowed to use."""
+        entitlements = await self._cache.get(tenant_id, bearer_token)
+        return {key for key, ent in entitlements.items() if ent.allowed}
+
     async def check_before_call(
         self,
         tenant_id: UUID,

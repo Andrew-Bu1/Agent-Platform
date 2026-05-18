@@ -1,5 +1,6 @@
 from uuid import UUID, uuid4
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
@@ -94,6 +95,7 @@ def router() -> APIRouter:
 
     @r.get("")
     async def list_providers(
+        _ctx: CallerContext = Depends(get_caller_context),
         repo: ProvidersRepository = Depends(get_providers_repo),
     ):
         return await repo.list()
@@ -101,6 +103,7 @@ def router() -> APIRouter:
     @r.get("/{id}")
     async def get_provider(
         id: UUID,
+        _ctx: CallerContext = Depends(get_caller_context),
         repo: ProvidersRepository = Depends(get_providers_repo),
     ):
         provider = await repo.get_by_id(id)
@@ -167,7 +170,10 @@ def router() -> APIRouter:
         repo: ProvidersRepository = Depends(get_providers_repo),
     ):
         _require_provider_manage(ctx)
-        deleted = await repo.delete(id)
+        try:
+            deleted = await repo.delete(id)
+        except asyncpg.ForeignKeyViolationError:
+            raise HTTPException(status_code=409, detail="Provider is referenced by one or more model configs")
         if not deleted:
             raise HTTPException(status_code=404, detail="Provider not found")
 

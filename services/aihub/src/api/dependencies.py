@@ -4,6 +4,7 @@ from src.middleware.auth import get_caller_context as _get_caller_context
 from src.repositories.model_config import ModelConfigRepository
 from src.repositories.model_usage_log import ModelUsageLogRepository
 from src.repositories.providers import ProvidersRepository
+from src.services.entitlement import EntitlementGuard
 from src.services.router import ServiceRouter
 
 # Re-export so endpoints import from one place.
@@ -24,3 +25,7 @@ def get_model_usage_log_repo(request: Request) -> ModelUsageLogRepository:
 
 def get_providers_repo(request: Request) -> ProvidersRepository:
     return request.app.state.providers_repo
+
+
+def get_entitlement_guard(request: Request) -> EntitlementGuard:
+    return request.app.state.entitlement_guard

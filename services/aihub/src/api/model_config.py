@@ -1,15 +1,17 @@
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from common.logger import get_logger
 
-from src.api.dependencies import get_caller_context, get_model_config_repo, get_providers_repo
+from src.api.dependencies import get_caller_context, get_entitlement_guard, get_model_config_repo, get_providers_repo
 from src.models.auth import CallerContext
 from src.repositories.model_config import ModelConfigRepository
 from src.repositories.providers import ProvidersRepository
+from src.services.entitlement import EntitlementGuard
 
 
 def _require_model_manage(ctx: CallerContext) -> None:
@@ -61,18 +63,32 @@ def router() -> APIRouter:
     async def list_model_configs(
         operation_type: str | None = Query(default=None),
         provider_key: str | None = Query(default=None),
+        ctx: CallerContext = Depends(get_caller_context),
         repo: ModelConfigRepository = Depends(get_model_config_repo),
+        guard: EntitlementGuard = Depends(get_entitlement_guard),
     ):
-        return await repo.list(operation_type=operation_type, provider_key=provider_key)
+        models = await repo.list(operation_type=operation_type, provider_key=provider_key)
+        # Platform admins (model:manage) can see all model configs regardless of
+        # tenant entitlements; regular callers only see their entitled models.
+        if "model:manage" in ctx.permissions:
+            return models
+        allowed = await guard.get_allowed_keys(ctx.tenant_id, ctx.bearer_token)
+        return [m for m in models if (m.model_key, m.operation_type) in allowed]
 
     @r.get("/{id}")
     async def get_model_config(
         id: UUID,
+        ctx: CallerContext = Depends(get_caller_context),
         repo: ModelConfigRepository = Depends(get_model_config_repo),
+        guard: EntitlementGuard = Depends(get_entitlement_guard),
     ):
         config = await repo.get_by_id(id)
         if config is None:
             raise HTTPException(status_code=404, detail="Model config not found")
+        if "model:manage" not in ctx.permissions:
+            allowed = await guard.get_allowed_keys(ctx.tenant_id, ctx.bearer_token)
+            if (config.model_key, config.operation_type) not in allowed:
+                raise HTTPException(status_code=404, detail="Model config not found")
         return config
 
     @r.post("", status_code=201)
@@ -143,7 +159,10 @@ def router() -> APIRouter:
         repo: ModelConfigRepository = Depends(get_model_config_repo),
     ):
         _require_model_manage(ctx)
-        deleted = await repo.delete(id)
+        try:
+            deleted = await repo.delete(id)
+        except asyncpg.ForeignKeyViolationError:
+            raise HTTPException(status_code=409, detail="Model config is referenced by one or more usage logs")
         if not deleted:
             raise HTTPException(status_code=404, detail="Model config not found")
 

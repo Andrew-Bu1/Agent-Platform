@@ -40,6 +40,82 @@ class ModelUsageLogRepository:
             log.latency_ms,
         )
 
+    async def platform_analytics(
+        self,
+        tenant_id: UUID | None = None,
+        days: int = 30,
+    ) -> dict:
+        """Aggregate usage stats for platform admins. tenant_id=None means all tenants."""
+        base_where = "WHERE created_at >= NOW() - ($1 || ' days')::INTERVAL"
+        args_base: list = [str(days)]
+
+        if tenant_id is not None:
+            base_where += " AND tenant_id = $2"
+            args_base.append(tenant_id)
+
+        # overall totals
+        totals_row = await self._db.fetch(
+            f"""
+            SELECT
+                COUNT(*)                                            AS request_count,
+                COALESCE(SUM(input_tokens),  0)                    AS input_tokens,
+                COALESCE(SUM(output_tokens), 0)                    AS output_tokens,
+                COALESCE(SUM(cost::numeric), 0)                    AS cost,
+                COALESCE(AVG(latency_ms), 0)                       AS avg_latency_ms,
+                COUNT(*) FILTER (WHERE status = 'success')         AS success_count,
+                COUNT(*) FILTER (WHERE status = 'failed')          AS failed_count,
+                COUNT(*) FILTER (WHERE status = 'rejected')        AS rejected_count,
+                COUNT(*) FILTER (WHERE status = 'timeout')         AS timeout_count
+            FROM model_usage_logs {base_where}
+            """,
+            *args_base,
+        )
+        totals = dict(totals_row[0]) if totals_row else {}
+
+        # by model + operation
+        model_rows = await self._db.fetch(
+            f"""
+            SELECT
+                model_key,
+                operation_type,
+                COUNT(*)                                            AS request_count,
+                COALESCE(SUM(input_tokens),  0)                    AS input_tokens,
+                COALESCE(SUM(output_tokens), 0)                    AS output_tokens,
+                COALESCE(SUM(cost::numeric), 0)                    AS cost,
+                COALESCE(AVG(latency_ms), 0)                       AS avg_latency_ms,
+                COUNT(*) FILTER (WHERE status = 'success')         AS success_count,
+                COUNT(*) FILTER (WHERE status != 'success')        AS error_count
+            FROM model_usage_logs {base_where}
+            GROUP BY model_key, operation_type
+            ORDER BY input_tokens DESC
+            """,
+            *args_base,
+        )
+
+        # per-tenant breakdown (only when viewing all tenants)
+        tenant_rows: list = []
+        if tenant_id is None:
+            tenant_rows = await self._db.fetch(
+                f"""
+                SELECT
+                    tenant_id::text,
+                    COUNT(*)                                        AS request_count,
+                    COALESCE(SUM(input_tokens),  0)                AS input_tokens,
+                    COALESCE(SUM(output_tokens), 0)                AS output_tokens,
+                    COALESCE(SUM(cost::numeric), 0)                AS cost
+                FROM model_usage_logs {base_where}
+                GROUP BY tenant_id
+                ORDER BY input_tokens DESC
+                """,
+                *args_base,
+            )
+
+        return {
+            "totals": {k: float(v) if hasattr(v, "__float__") else v for k, v in totals.items()},
+            "by_model": [dict(r) for r in model_rows],
+            "by_tenant": [dict(r) for r in tenant_rows],
+        }
+
     async def list(
         self,
         tenant_id: UUID | None = None,

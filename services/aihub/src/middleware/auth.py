@@ -1,3 +1,5 @@
+import asyncio
+import time
 from typing import Any
 from uuid import UUID
 
@@ -15,13 +17,15 @@ _bearer = HTTPBearer()
 class JwksCache:
     """
     Fetches and caches RSA public keys from the IAM JWKS endpoint.
-    Re-fetches automatically when an unknown kid is encountered (handles key rotation
-    without polling or TTL timers).
+    Re-fetches through a serialized, rate-limited path when an unknown kid is
+    encountered, which handles key rotation without polling.
     """
 
     def __init__(self, iam_base_url: str) -> None:
         self._url = f"{iam_base_url}/.well-known/jwks.json"
         self._keys: dict[str, Any] = {}
+        self._load_lock = asyncio.Lock()
+        self._last_fetch = 0.0
 
     async def load(self) -> None:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -32,9 +36,17 @@ class JwksCache:
             jwk["kid"]: RSAAlgorithm.from_jwk(jwk)
             for jwk in data.get("keys", [])
         }
+        self._last_fetch = time.monotonic()
 
     async def get_key(self, kid: str) -> Any | None:
-        if kid not in self._keys:
+        if kid in self._keys:
+            return self._keys[kid]
+
+        async with self._load_lock:
+            if kid in self._keys:
+                return self._keys[kid]
+            if time.monotonic() - self._last_fetch < 60:
+                return None
             await self.load()
         return self._keys.get(kid)
 

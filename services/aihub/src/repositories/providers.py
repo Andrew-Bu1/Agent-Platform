@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -26,10 +27,18 @@ class ProviderRecord:
     is_active: bool = True
 
 
+def _parse_config(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        return json.loads(value) if value else {}
+    return {}
+
+
 def _to_public(row: dict) -> dict:
     """Strip sensitive fields from a provider row before returning it to the API."""
     out = dict(row)
-    config = out.pop("config_json", {}) or {}
+    config = _parse_config(out.pop("config_json", {}) or {})
     out["has_api_key"] = bool(config.get("api_key"))
     return out
 
@@ -50,7 +59,7 @@ class ProvidersRepository:
                 display_name=r["display_name"],
                 base_url=r["base_url"],
                 adapter_type=r["adapter_type"],
-                config_json=dict(r["config_json"] or {}),
+                config_json=_parse_config(r["config_json"]),  # asyncpg returns JSONB as str
                 is_active=r["is_active"],
             )
             for r in rows

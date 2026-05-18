@@ -7,6 +7,7 @@ from common.storage import MinioStorage
 from fastapi import FastAPI
 
 from src.adapters.registry import build_registry
+from src.api import analytics as analytics_api
 from src.api import chat as chat_api
 from src.api import embedding as embedding_api
 from src.api import model_config as model_config_api
@@ -53,6 +54,7 @@ async def lifespan(app: FastAPI):
     app.state.model_config_repo = model_config_repo
     app.state.model_usage_log_repo = model_usage_log_repo
     app.state.providers_repo = providers_repo
+    app.state.entitlement_guard = entitlement_guard
     app.state.jwks_cache = jwks_cache
     app.state.iam_config = settings.iam
     app.state.provider_encryption_key = settings.provider.encryption_key
@@ -86,6 +88,7 @@ app.include_router(rerank_api.router(), prefix="/v1")
 app.include_router(model_config_api.router(), prefix="/v1")
 app.include_router(model_usage_log_api.router(), prefix="/v1")
 app.include_router(providers_api.router(), prefix="/v1")
+app.include_router(analytics_api.router(), prefix="/v1")
 
 
 if __name__ == "__main__":
