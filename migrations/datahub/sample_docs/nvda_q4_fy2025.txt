@@ -1,0 +1,26 @@
+NVIDIA Corporation Q4 FY2025 Earnings Report
+Fiscal Quarter Ended January 26, 2025
+
+FINANCIAL HIGHLIGHTS
+
+NVIDIA reported Q4 FY2025 revenue of $39.3 billion, up 78% year-over-year, significantly exceeding analyst estimates of $38.0 billion. Data Center revenue reached $35.6 billion, growing 93% year-over-year. GAAP EPS was $0.89, up 82% year-over-year. The Blackwell GPU architecture drove unprecedented demand from hyperscalers, cloud providers, and enterprise AI deployments.
+
+DATA CENTER AND BLACKWELL
+
+The Blackwell GPU platform ramped to $11 billion in revenue in Q4 FY2025, setting a record for the fastest product ramp in NVIDIA's history. Demand continues to far exceed supply as the company accelerates Blackwell production capacity. Key customers including Microsoft, Google, Amazon, and Meta placed large Blackwell cluster orders. NVIDIA's H200 GPU also remained in high demand for inference workloads.
+
+GAMING AND PROVIZ
+
+Gaming revenue grew 11% year-over-year to $2.5 billion in Q4 FY2025, driven by the GeForce RTX 50 series launch and strong adoption of AI-powered features like DLSS 4. Professional Visualization (ProViz) revenue grew 10% to $511 million, supported by demand for Quadro RTX workstations for AI content creation. Automotive revenue reached a record $570 million, up 103% year-over-year.
+
+GROSS MARGIN AND GUIDANCE
+
+NVIDIA's GAAP gross margin was 73.0% in Q4 FY2025, slightly below the prior quarter due to the initial Blackwell ramp costs. NVIDIA guided Q1 FY2026 revenue to approximately $43.0 billion ± 2%, implying continued rapid growth. The company announced a $50 billion additional share buyback authorization. Capital expenditures increased to $1.1 billion as NVIDIA expands its own AI infrastructure.
+
+NIM AND SOFTWARE
+
+NVIDIA Inference Microservices (NIM) are deployed in over 2,000 enterprise customers. The NVIDIA AI Enterprise software platform saw 300% growth in annual contract value. CUDA developer community surpassed 5 million worldwide. DGX Cloud revenue more than tripled year-over-year.
+
+CEO COMMENTARY
+
+"The era of agentic AI is upon us," said Jensen Huang, NVIDIA's CEO. "Blackwell is in full production, and demand is extraordinary. The next wave will be physical AI — robots and autonomous systems powered by NVIDIA platforms."

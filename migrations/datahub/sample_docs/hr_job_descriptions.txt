@@ -1,0 +1,102 @@
+Job Descriptions — Engineering Department
+Hiring Cycle Q2 2026
+
+─────────────────────────────────────────
+JOB 1: Senior Software Engineer — Backend Platform
+─────────────────────────────────────────
+Team: Platform Engineering
+Location: Remote (US/EU)
+Seniority: Senior (Level 3)
+Salary Band: $160,000 – $200,000 USD
+
+ABOUT THE ROLE
+You will design and build core infrastructure services that power our multi-tenant SaaS platform. You will own backend systems serving 10M+ API requests per day, lead technical design reviews, and mentor a team of 3 engineers.
+
+RESPONSIBILITIES
+- Design, implement, and operate distributed backend services in Go and PostgreSQL.
+- Lead architectural decisions for new features including API design, data modeling, and scaling strategies.
+- Drive reliability improvements: define SLOs, implement observability (metrics, tracing, alerting).
+- Mentor junior and mid-level engineers through code review and technical pairing.
+- Collaborate with product managers and frontend engineers on roadmap execution.
+
+REQUIRED SKILLS
+- 5+ years backend engineering in production environments
+- Proficiency in Go (preferred) or Python/Java
+- PostgreSQL: query optimisation, indexing, schema design
+- REST API design and gRPC
+- Redis caching patterns
+- Docker and Kubernetes (EKS or GKE)
+- CI/CD with GitHub Actions or similar
+- Strong written communication for design documents
+
+PREFERRED SKILLS
+- Experience with event-driven architecture (Kafka or RabbitMQ)
+- pgvector or similar vector database experience
+- Multi-tenant SaaS architecture patterns
+- OpenTelemetry and distributed tracing
+
+
+─────────────────────────────────────────
+JOB 2: Product Manager — AI Platform
+─────────────────────────────────────────
+Team: AI Products
+Location: San Francisco, CA (hybrid)
+Seniority: Mid-Senior
+Salary Band: $150,000 – $190,000 USD
+
+ABOUT THE ROLE
+Own the product roadmap for our AI agent platform. You will work directly with engineering leads, data scientists, and enterprise customers to define the vision, prioritise features, and drive execution. This role requires technical depth — you will be fluent in AI/ML concepts and able to write product specs that engineers trust.
+
+RESPONSIBILITIES
+- Define and own the 12-month product roadmap for the AI orchestration platform.
+- Conduct customer discovery interviews to identify pain points and translate them into feature requirements.
+- Write detailed PRDs, user stories, and acceptance criteria.
+- Partner with engineering to scope, estimate, and sequence work each sprint.
+- Track product metrics (adoption, retention, time-to-value) and report to leadership.
+- Represent the product in sales cycles with enterprise prospects.
+
+REQUIRED SKILLS
+- 4+ years product management in B2B SaaS
+- Technical background: CS degree or 2+ years engineering experience
+- Familiarity with AI/ML concepts: LLMs, RAG, embeddings, agent frameworks
+- Experience with agile delivery (Scrum/Kanban)
+- Strong stakeholder management skills
+- Data-driven: comfortable with SQL, Mixpanel, or similar analytics tools
+
+PREFERRED SKILLS
+- Prior experience with developer tools or platform products
+- Experience with enterprise sales cycles (POC, pilot, expansion)
+- Familiarity with LangChain, LlamaIndex, or similar frameworks
+
+
+─────────────────────────────────────────
+JOB 3: Data Scientist — Recommendation & Personalisation
+─────────────────────────────────────────
+Team: Data Science
+Location: Remote (global)
+Seniority: Mid-Level (2-5 years)
+Salary Band: $130,000 – $165,000 USD
+
+ABOUT THE ROLE
+Build machine learning models that personalise the agent platform experience for each user. You will work on recommendation systems, usage pattern analysis, and model evaluation pipelines — from prototype to production.
+
+RESPONSIBILITIES
+- Develop and iterate on recommendation and ranking models using Python and PyTorch/scikit-learn.
+- Design A/B experiments and analyse results to drive product decisions.
+- Build feature engineering pipelines in collaboration with data engineers.
+- Monitor model drift and maintain production model quality.
+- Present findings to product and engineering stakeholders.
+
+REQUIRED SKILLS
+- 3+ years applied data science or ML engineering
+- Proficiency in Python (pandas, scikit-learn, PyTorch or TensorFlow)
+- SQL for feature extraction and analysis
+- Statistics: hypothesis testing, regression, Bayesian methods
+- Experience deploying models to production (REST API or batch pipeline)
+- Version control for models and experiments (MLflow, DVC, or similar)
+
+PREFERRED SKILLS
+- Recommendation systems or collaborative filtering experience
+- NLP / embedding models (sentence-transformers, OpenAI embeddings)
+- Experience with Spark or distributed computing
+- Knowledge of causal inference methods

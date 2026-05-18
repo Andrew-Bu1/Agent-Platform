@@ -1,0 +1,50 @@
+Portfolio Risk Management Framework
+Internal Risk Management Guidelines — Version 3.2
+
+1. VALUE AT RISK (VaR)
+
+Value at Risk (VaR) is a statistical measure that quantifies the potential loss in value of a portfolio over a defined period for a given confidence interval. Our standard approach uses a 95% confidence level over a 1-day horizon (VaR95,1d) and a 99% confidence level over a 10-day horizon (VaR99,10d). The daily VaR is scaled to 10-day VaR using the square-root-of-time rule: VaR10d = VaR1d × √10.
+
+Methodology options:
+- Historical simulation: Uses actual historical return distribution over 252 trading days.
+- Parametric (variance-covariance): Assumes normal distribution; faster but underestimates tail risk.
+- Monte Carlo simulation: Preferred for non-linear portfolios and options.
+
+2. BETA AND CORRELATION ANALYSIS
+
+Portfolio beta measures systematic risk relative to the benchmark (typically the S&P 500). A beta of 1.0 indicates the portfolio moves in line with the market; beta > 1.0 indicates higher volatility. Pairwise correlation analysis between portfolio holdings is conducted monthly to ensure diversification. Maximum single-position correlation with the index should not exceed 0.85 to maintain active risk management.
+
+Beta calculation: β = Cov(portfolio returns, benchmark returns) / Var(benchmark returns)
+
+Correlation thresholds:
+- Low correlation: < 0.3 (preferred for diversification)
+- Moderate correlation: 0.3 - 0.6 (acceptable)
+- High correlation: > 0.6 (requires position sizing review)
+
+3. MAXIMUM DRAWDOWN AND SHARPE RATIO
+
+Maximum drawdown (MDD) measures the largest peak-to-trough decline in portfolio value over a specific period. Our risk mandate requires MDD to not exceed 20% over any rolling 12-month window. The Sharpe ratio, calculated as (portfolio return - risk-free rate) / portfolio standard deviation, must exceed 1.0 on a trailing 12-month basis. Portfolios falling below these thresholds trigger a mandatory risk review.
+
+MDD formula: MDD = (Trough Value - Peak Value) / Peak Value
+
+Sortino ratio (preferred when measuring downside risk):
+Sortino = (Portfolio Return - Risk-Free Rate) / Downside Deviation
+
+4. CAGR AND REBALANCING POLICY
+
+Compounded Annual Growth Rate (CAGR) is the primary long-term performance measure, calculated as [(Ending Value / Beginning Value)^(1/n)] - 1 where n is the number of years. The target CAGR for the balanced portfolio is CPI + 5% over rolling 5-year periods. Quarterly rebalancing is triggered when any asset class deviates more than 5% from its target allocation. Annual strategic rebalancing reviews the target allocation itself based on updated capital market assumptions.
+
+Target allocation (Balanced Growth):
+- Equities: 60% (US 40%, International 20%)
+- Fixed Income: 30% (Investment grade 20%, High yield 10%)
+- Alternatives: 10% (REITs 5%, Commodities 5%)
+
+5. STRESS TESTING
+
+Monthly stress tests apply the following historical scenarios:
+- 2008 Global Financial Crisis: -38% equity shock
+- 2020 COVID crash: -34% over 30 days
+- 2022 Rate shock: -20% bonds, -19% equities
+- Custom scenarios based on current macro environment
+
+Results are reported to the Investment Committee and Risk Committee monthly.

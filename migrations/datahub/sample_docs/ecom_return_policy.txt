@@ -1,0 +1,65 @@
+ShopFast E-Commerce — Return & Refund Policy
+Effective Date: January 1, 2025 | Version 4.3
+
+1. RETURN ELIGIBILITY WINDOW
+
+Most items are eligible for return within 30 days of delivery. The following categories have modified windows:
+
+| Category          | Return Window | Notes |
+|-------------------|---------------|-------|
+| Electronics       | 15 days       | Must be unopened or defective |
+| Apparel & Shoes   | 60 days       | Tags must be attached |
+| Furniture         | 14 days       | Assembly voids return unless defective |
+| Perishables/Food  | Not eligible  | — |
+| Digital Downloads | Not eligible  | — |
+| Customised items  | Not eligible  | — |
+| Luxury items >$500| 7 days        | Original packaging required |
+
+2. REFUND AMOUNTS BY CONDITION
+
+Unopened / sealed items: 100% refund to original payment method.
+Opened items in resalable condition: 75% refund or 100% store credit.
+Damaged by customer / missing accessories: 50% refund or exchange only.
+Items returned after window: No refund. Store credit may be offered at manager discretion.
+
+3. COMPLAINT TYPE POLICIES
+
+DAMAGED / DEFECTIVE ITEMS:
+Full 100% refund or free replacement within 15 days of delivery, regardless of open/unopened status. Customer does not need to return the item for orders under $100. For orders $100+, a prepaid return label is issued. Defect must be reported with photo evidence within 3 days of delivery for same-day processing.
+
+WRONG ITEM RECEIVED:
+100% refund plus return shipping label at no cost. Free expedited replacement shipped within 24 hours upon confirmation. Customer may keep wrong item if value < $25.
+
+LATE DELIVERY:
+If delivery is 7+ days past the estimated delivery date, customer is eligible for a 15% refund of shipping cost. If delivery is 14+ days past the estimated date, customer may cancel for full refund. For perishable items, 100% refund if delivered more than 2 days late.
+
+LOST IN TRANSIT:
+If tracking shows no movement for 7+ business days and carrier confirms lost, full replacement or refund is issued within 2 business days, no return required.
+
+4. REFUND PROCESSING TIMELINE
+
+| Refund Method         | Processing Time |
+|-----------------------|-----------------|
+| Original credit card  | 3-5 business days |
+| Debit card            | 5-7 business days |
+| PayPal                | 1-3 business days |
+| Store credit          | Instant          |
+| Bank transfer         | 7-10 business days|
+
+5. HIGH-VALUE ORDER ESCALATION
+
+Orders above $500 require supervisor approval for refunds. Orders above $1,000 require senior management approval and may take up to 5 business days for investigation. Customers with 3+ refund requests in 12 months are flagged for review before processing.
+
+6. CUSTOMER GOODWILL
+
+First-time refund request: 10% discount code issued automatically (code: SORRY10).
+Delivery delay >= 5 days: $5 store credit issued proactively.
+Product defect requiring 2+ contacts to resolve: 20% discount on next order.
+
+7. EXCEPTIONS AND OVERRIDES
+
+Regional regulations (EU/UK): 14-day cooling-off period applies to all categories per Consumer Rights Act. No restocking fee permitted.
+California residents: 30-day return window on all categories per California consumer law.
+
+Escalation email: support@shopfast.com
+Priority queue for orders > $200: priority@shopfast.com

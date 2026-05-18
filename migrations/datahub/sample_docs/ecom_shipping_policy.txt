@@ -1,0 +1,65 @@
+ShopFast E-Commerce — Shipping & Delivery Policy
+Effective Date: January 1, 2025 | Version 3.8
+
+1. SHIPPING OPTIONS AND SLAs
+
+| Service           | Carrier         | Estimated Delivery | Cost         |
+|-------------------|-----------------|--------------------|--------------|
+| Standard Shipping | USPS / UPS      | 5-7 business days  | $4.99 or free on orders >$50 |
+| Expedited         | FedEx / UPS     | 2-3 business days  | $12.99       |
+| Overnight         | FedEx Priority  | Next business day  | $24.99       |
+| Same-Day (select cities) | DoorDash | Same day by 9 PM  | $9.99        |
+| International     | DHL             | 7-21 business days | Varies by country |
+
+Free standard shipping is automatically applied to all orders over $50 in the contiguous US.
+
+2. ORDER PROCESSING TIMES
+
+Orders placed before 2 PM (local warehouse time) are processed the same business day.
+Orders placed after 2 PM or on weekends/holidays are processed the next business day.
+Customised or personalised items require an additional 3-5 business days for production.
+Pre-order items ship on or before the stated release date.
+
+3. DELIVERY PROMISE AND LATE DELIVERY POLICY
+
+ShopFast guarantees delivery within the stated SLA window for standard and expedited orders. If the delivery is late:
+
+- 1-3 days late: No automatic compensation. Customer support can issue $5 store credit on request.
+- 4-6 days late: 15% refund of shipping cost issued automatically.
+- 7-13 days late: Full shipping cost refunded. Customer may cancel for full refund.
+- 14+ days late: Full order refund or free replacement shipment, customer's choice.
+
+Delays caused by natural disasters, carrier disruptions, customs holds (international), or incorrect address provided by the customer are not eligible for late delivery compensation.
+
+4. TRACKING AND NOTIFICATIONS
+
+Customers receive an email with tracking number within 1 hour of shipment label creation. Tracking is updated every 4 hours. Automated delivery notifications are sent at: label created, shipped, out for delivery, delivered.
+
+For orders that show "delivered" in tracking but the customer reports not receiving the package:
+- A 3-day investigation period applies before reshipment.
+- Carrier GPS confirmation is reviewed.
+- If carrier confirms delivery to the correct address, a replacement requires a filed police report.
+
+5. INTERNATIONAL SHIPPING
+
+Duties and customs fees are the customer's responsibility and are not included in the product price. ShopFast uses Delivered Duties Unpaid (DDU) terms unless explicitly stated otherwise. Estimated customs fees are shown at checkout for eligible countries. International returns require the customer to ship the item back at their own expense (ShopFast reimburses up to $20 of return shipping on defective items).
+
+6. CARRIER CONTACT INFORMATION
+
+| Carrier | Phone         | Website           |
+|---------|---------------|-------------------|
+| USPS    | 1-800-275-8777| usps.com          |
+| UPS     | 1-800-742-5877| ups.com           |
+| FedEx   | 1-800-463-3339| fedex.com         |
+| DHL     | 1-800-225-5345| dhl.com           |
+
+7. ADDRESS CHANGES AND INTERCEPT
+
+Address changes can be requested within 30 minutes of order placement via the customer portal. After this window, UPS and FedEx intercepts can be attempted at a $16.99 fee. USPS intercepts are not guaranteed. Once an order is marked "Out for Delivery," address changes are not possible.
+
+8. SIGNATURE REQUIREMENTS
+
+Orders over $500 require a signature upon delivery. Electronics and luxury goods over $200 require signature. If the customer is not available, the carrier will attempt delivery twice and then hold at the local facility for 7 days before returning to ShopFast.
+
+Contact: shipping@shopfast.com
+Tracking portal: track.shopfast.com

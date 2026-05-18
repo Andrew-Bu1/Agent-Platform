@@ -1,0 +1,65 @@
+Structured Interview Guide — Software Engineering Roles
+HR & Hiring Manager Reference — Confidential
+
+1. INTERVIEW STRUCTURE (90 minutes total)
+
+Phase 1 — Introduction (10 min): Rapport building, role overview, agenda.
+Phase 2 — Technical Screen (40 min): Coding problem or system design.
+Phase 3 — Behavioural (25 min): STAR-format questions from sections below.
+Phase 4 — Candidate Questions (10 min): Candidate asks about role, team, culture.
+Phase 5 — Wrap-up (5 min): Next steps, timeline.
+
+2. BEHAVIOURAL QUESTIONS BY COMPETENCY
+
+COLLABORATION & TEAMWORK
+Q1: Tell me about a time you had a technical disagreement with a peer. How did you resolve it?
+Scoring: Look for active listening, data-driven resolution, respect for different perspectives. A-score: reached consensus through evidence or compromise. F-score: imposed their view or avoided conflict.
+
+Q2: Describe a cross-functional project where you worked with non-engineers (product, design, or data). What was your role?
+Scoring: A-score: proactively bridged technical and non-technical stakeholders, translated requirements clearly. F-score: worked in isolation, no evidence of stakeholder communication.
+
+PROBLEM SOLVING & OWNERSHIP
+Q3: Walk me through the most technically challenging problem you have solved. What was your approach?
+Scoring: Look for structured thinking, hypothesis testing, root cause analysis. A-score: systematic approach, learned from failure, iterated. F-score: lucky guess or cannot explain reasoning.
+
+Q4: Describe a time a project you owned went off-track. How did you handle it?
+Scoring: A-score: raised the blocker early, communicated impact, proposed solutions, escalated when necessary. F-score: hid the problem, blamed others, or let it spiral.
+
+TECHNICAL DEPTH
+Q5: How do you approach designing a new service or feature from scratch?
+Scoring: A-score: discusses requirements gathering, trade-offs, failure modes, observability, security, and scalability. F-score: jumps to implementation without considering constraints.
+
+Q6: Tell me about a time you identified and resolved a performance or reliability issue in production.
+Scoring: A-score: used metrics, tracing, or profiling; explained root cause clearly; implemented a systematic fix. F-score: vague, cannot explain tools used, no permanent fix.
+
+GROWTH MINDSET
+Q7: What is the most significant thing you have learned in the past 12 months? How did you apply it?
+Scoring: A-score: concrete learning (new technology, process, soft skill), applied to real project, measurable outcome. F-score: generic answer, no application to work.
+
+Q8: How do you stay current with industry trends in software engineering?
+Scoring: A-score: specific sources (blogs, conferences, papers, communities), recent example. F-score: "I learn on the job" with no specifics.
+
+3. SCORING RUBRIC
+
+| Score | Label       | Description |
+|-------|-------------|-------------|
+| 4     | Exceptional | Exceeds expectations; specific, insightful, reflects senior maturity |
+| 3     | Strong      | Clear STAR structure, good outcome, some depth |
+| 2     | Adequate    | Basic answer, limited depth or reflection |
+| 1     | Weak        | Vague, generic, no specific example |
+| 0     | No Signal   | Could not answer or answer was irrelevant |
+
+Hiring threshold: average score >= 2.5 across all questions for a "pass". Score >= 3.0 for senior roles.
+
+4. REFERENCE CHECK QUESTIONS
+
+For previous manager:
+- How would you describe this person's technical skills relative to their peers?
+- Can you describe a time they handled a difficult project or conflict?
+- Would you rehire them? In what role?
+- Are there any development areas they should focus on in their next role?
+
+For previous colleague:
+- How did they contribute to team projects?
+- What was it like to receive code reviews from them? Give reviews?
+- How did they handle disagreements or pressure?

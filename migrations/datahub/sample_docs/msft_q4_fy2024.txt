@@ -1,0 +1,26 @@
+Microsoft Corporation Q4 FY2024 Earnings Report
+Fiscal Quarter Ended June 30, 2024
+
+FINANCIAL HIGHLIGHTS
+
+Microsoft reported Q4 FY2024 revenue of $64.7 billion, up 15% year-over-year, exceeding consensus estimates of $64.4 billion. Net income grew 10% to $22.0 billion. EPS came in at $2.95, above the analyst estimate of $2.93. The company's AI-driven cloud growth continued to be the primary growth driver across all segments.
+
+INTELLIGENT CLOUD
+
+The Intelligent Cloud segment, which includes Azure, SQL Server, Windows Server, and GitHub, generated revenue of $28.5 billion, growing 19% year-over-year. Azure and other cloud services grew 29%, with approximately 8 percentage points of that growth attributable to AI services. The Azure AI Foundry platform saw rapid adoption from enterprise customers integrating OpenAI models into their workflows.
+
+PRODUCTIVITY AND BUSINESS PROCESSES
+
+Microsoft 365 Commercial revenue grew 13% to $20.3 billion in Q4 FY2024. Copilot M365 seats continued to expand with over 400,000 organizations using Copilot. LinkedIn revenue grew 10%. Dynamics products and cloud services grew 16%, driven by Dynamics 365 Copilot adoption. The Productivity and Business Processes segment totaled $26.5 billion.
+
+GAMING AND MORE PERSONAL COMPUTING
+
+Gaming revenue grew 61% to $5.5 billion, primarily driven by the Activision Blizzard acquisition contribution. Xbox content and services revenue grew 61%. Microsoft provided Q1 FY2025 revenue guidance of $63.8-64.8 billion. Capital expenditures were $19 billion in Q4, reflecting ongoing investment in AI infrastructure and data center capacity.
+
+AI STRATEGY
+
+Microsoft's Copilot ecosystem is expanding across all product lines. GitHub Copilot now has over 1.8 million paid subscribers. Azure OpenAI Service customers exceeded 60,000. The company committed to $55 billion in capital expenditure for FY2025, primarily to build AI infrastructure.
+
+OPERATING METRICS
+
+Operating income was $27.9 billion, representing a 43.1% operating margin. Free cash flow was $23.3 billion. The company returned $8.4 billion to shareholders through dividends and share buybacks. Commercial remaining performance obligations grew 19% to $269 billion.

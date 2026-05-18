@@ -1,0 +1,37 @@
+S&P 500 Sector Analysis 2024
+Annual Market Review — December 31, 2024
+
+MARKET PERFORMANCE OVERVIEW
+
+The S&P 500 Index delivered a total return of approximately 25% in 2024, marking the second consecutive year of strong double-digit gains. The index rose from 4,769 at year-end 2023 to close at approximately 5,881 at year-end 2024. Market breadth improved in the second half of the year as interest rate cuts by the Federal Reserve supported a rotation into value and small-cap stocks.
+
+TECHNOLOGY AND AI DOMINANCE
+
+The Information Technology sector led all sectors with a 36% return in 2024. The "Magnificent Seven" stocks — Apple, Microsoft, NVIDIA, Alphabet, Amazon, Meta, and Tesla — collectively contributed more than 50% of the index's total return. NVIDIA's stock surged over 170% driven by AI chip demand. Communications Services returned 40%, boosted by Meta and Alphabet's AI monetization progress.
+
+INTEREST RATES AND FINANCIAL SECTOR
+
+The Federal Reserve cut the federal funds rate three times in 2024, bringing it from 5.25-5.50% to 4.25-4.50%. The Financial sector returned 30% in 2024, benefiting from resilient net interest margins, strong capital markets activity, and IPO market recovery. Bank of America, JPMorgan Chase, and Goldman Sachs all posted record annual profits. Regional banks recovered after the 2023 stress events.
+
+ENERGY AND DEFENSIVE SECTORS
+
+Energy sector returned approximately 5% in 2024, significantly underperforming the broader market as oil prices remained range-bound between $65-$90 per barrel. The Utilities sector returned 23%, boosted by AI data center electricity demand. Consumer Staples returned 14% while Healthcare returned 2%, facing headwinds from biosimilar competition and Medicare drug pricing negotiations.
+
+SECTOR RETURNS SUMMARY (2024)
+
+Information Technology: +36%
+Communication Services: +40%
+Financials: +30%
+Consumer Discretionary: +28%
+Industrials: +17%
+Utilities: +23%
+Real Estate: +5%
+Materials: +0%
+Consumer Staples: +14%
+Healthcare: +2%
+Energy: +5%
+S&P 500 Index Total: +25%
+
+OUTLOOK 2025
+
+Consensus earnings growth estimate for S&P 500 companies in 2025 is approximately 12%, supported by AI productivity gains, resilient consumer spending, and a soft landing scenario. Key risks include geopolitical tensions, persistent inflation in services, and potential regulatory headwinds for large-cap technology companies.

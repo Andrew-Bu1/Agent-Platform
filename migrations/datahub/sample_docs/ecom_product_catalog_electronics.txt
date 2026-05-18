@@ -1,0 +1,122 @@
+ShopFast Electronics Catalog — Q1 2026
+Category: Consumer Electronics | Last Updated: March 1, 2026
+
+────────────────────────────────────────
+PRODUCT: ProSound ANC-900 Wireless Headphones
+SKU: ELEC-ANC-900
+Price: $249.99
+Category: Audio / Headphones
+Return Window: 15 days (electronics policy)
+
+Description:
+Premium over-ear noise-cancelling headphones with 40-hour battery life, Bluetooth 5.3, and spatial audio support. Compatible with iOS and Android.
+
+Technical Specs:
+- Driver size: 40mm dynamic driver
+- Frequency response: 20Hz – 20kHz
+- ANC reduction: up to -35dB
+- Battery: 40 hours ANC on, 60 hours ANC off
+- Charge time: 2 hours (USB-C), 15-min quick charge = 5 hours
+- Weight: 250g
+- Connectivity: Bluetooth 5.3, 3.5mm wired fallback
+
+Known Issues / Common Complaints:
+- Firmware v1.2.0 caused Bluetooth dropout on iOS 18.1 — resolved in v1.3.1 (update via ShopFast app)
+- Ear cushion adhesive may loosen after 12+ months of heavy use — replacement cushions available (SKU: ACC-ANC-900-CUS, $14.99)
+- ANC makes a faint hissing sound on some units from Batch B (serial numbers ANC900-B-xxxxx) — exchange eligible
+
+────────────────────────────────────────
+PRODUCT: LumaTab Pro 12 Tablet
+SKU: ELEC-TAB-LPR12
+Price: $499.99
+Category: Tablets
+Return Window: 15 days (electronics policy)
+
+Description:
+12-inch OLED tablet with M2-class processor, 256GB storage, and 5G connectivity. Ideal for creative professionals and students.
+
+Technical Specs:
+- Display: 12" OLED, 2560x1600, 120Hz
+- Processor: LumaSilicon M2 (8-core)
+- RAM: 8GB LPDDR5
+- Storage: 256GB UFS 3.1 (non-expandable)
+- Battery: 10,000 mAh, 30W fast charge
+- Cameras: 12MP rear, 10MP front
+- OS: LumaOS 3.2 (Android 14 based)
+- Connectivity: Wi-Fi 6E, Bluetooth 5.2, 5G (optional)
+- Weight: 520g
+
+Known Issues / Common Complaints:
+- Screen brightness inconsistency at low brightness settings (<20%) — software fix in OS 3.2.1 update
+- USB-C port occasionally not recognised on first connection — resolved by reconnecting or restarting device
+- 5G connectivity drops in rural areas with certain carrier APNs — contact carrier for APN settings
+
+────────────────────────────────────────
+PRODUCT: SmartHome Hub X3
+SKU: ELEC-HUB-X3
+Price: $129.99
+Category: Smart Home
+Return Window: 15 days (electronics policy)
+
+Description:
+Central smart home controller supporting Zigbee, Z-Wave, Matter, and Wi-Fi devices. Controls up to 200 devices simultaneously.
+
+Technical Specs:
+- Protocols: Zigbee 3.0, Z-Wave 700, Matter, Wi-Fi 2.4/5GHz
+- Max devices: 200
+- Local processing: yes (no cloud required)
+- Storage: 8GB eMMC
+- Processor: ARM Cortex-A53 quad-core
+- Connectivity: Ethernet (RJ45), Wi-Fi, Bluetooth 5.0
+- Power: 12V DC adapter (included)
+
+Known Issues / Common Complaints:
+- Zigbee mesh instability when > 50 devices connected in dense networks — resolved with firmware 2.4.1
+- Matter pairing with Apple HomeKit requires additional step (see setup guide page 12)
+- Unit may restart spontaneously if ambient temperature exceeds 40°C
+
+────────────────────────────────────────
+PRODUCT: ChargePod 120W GaN Charger
+SKU: ELEC-CHG-GAN120
+Price: $69.99
+Category: Accessories / Charging
+Return Window: 15 days (electronics policy)
+
+Description:
+5-port GaN charger (120W total) with 3x USB-C and 2x USB-A ports. Simultaneous fast charging for up to 5 devices.
+
+Technical Specs:
+- Total output: 120W
+- USB-C 1 (PD): up to 100W
+- USB-C 2 (PD): up to 65W
+- USB-C 3 (PD): up to 30W
+- USB-A 1: 18W Quick Charge 3.0
+- USB-A 2: 12W standard
+- Safety: OVP, OCP, OTP, SCP
+- Size: 85 x 70 x 32mm, 210g
+
+Known Issues / Common Complaints:
+- Minor warmth during simultaneous 100W + 65W charging is normal and within spec
+- Some MacBook Pro units (M3 Max) throttle to 85W on USB-C 1 — use USB-C 1 exclusively for max charge
+- Units from batch Q3-2025 had faulty USB-A 2 port (no output) — covered under warranty, replacement eligible (check serial MFG date on label)
+
+────────────────────────────────────────
+COMMON SUPPORT ISSUES AND RESOLUTIONS
+
+Issue: Item Arrived Damaged
+Resolution: Full refund or replacement within 15 days. Photo evidence required for electronics. Prepaid return label issued for orders > $100.
+
+Issue: Wrong Item Received
+Resolution: 100% refund plus free return label. Expedited replacement sent within 24 hours.
+
+Issue: Device Not Powering On
+Resolution: Try alternative charging cable and adapter first. If device still unresponsive after 30-min charge, eligible for replacement under warranty.
+
+Issue: Missing Accessories (cable, adapter, manual)
+Resolution: Accessories shipped separately within 3 business days. If not received after 7 days, full replacement kit shipped.
+
+Issue: Software/Firmware Issues
+Resolution: Direct customer to manufacturer update page first. If issue persists on latest firmware, eligible for replacement.
+
+Warranty contact: warranty@shopfast.com
+Electronics support line: 1-888-SHOPFST (Mon-Sat, 8AM-9PM EST)

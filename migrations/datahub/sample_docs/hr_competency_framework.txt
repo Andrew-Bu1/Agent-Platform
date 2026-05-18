@@ -1,0 +1,57 @@
+Software Engineering Competency Framework
+Internal HR Document — Version 2.1
+
+1. ENGINEERING LEVELS
+
+Level 1 — Junior Software Engineer (0-2 years)
+Completes well-defined tasks independently. Writes code that passes code review with minor feedback. Understands basic data structures, algorithms, and version control (Git). Familiar with one programming language (Python, Java, or Go) at a production level. Asks for help appropriately and learns from feedback.
+
+Level 2 — Software Engineer (2-4 years)
+Owns features from design to deployment. Designs simple systems independently. Reviews code from peers constructively. Debugs production issues without guidance. Familiar with SQL databases, REST API design, and basic cloud services (AWS/GCP/Azure). Writes unit and integration tests.
+
+Level 3 — Senior Software Engineer (4-8 years)
+Leads technical design for medium-complexity projects. Mentors junior engineers. Makes architecture decisions for the team scope. Identifies technical debt and proposes remediation. Deep expertise in at least one domain (backend, frontend, data, infrastructure). Experience with distributed systems, microservices, and CI/CD pipelines.
+
+Level 4 — Staff Software Engineer (8-12 years)
+Drives technical strategy across multiple teams. Designs systems that serve millions of users. Defines engineering standards and best practices. Leads cross-functional initiatives involving product, data, and security teams. Champions scalability, reliability (SLO/SLA), and security-by-design.
+
+Level 5 — Principal Engineer (12+ years)
+Company-wide technical authority. Defines multi-year technical roadmap. Represents engineering in executive forums. Drives adoption of new technologies (AI/ML, platform engineering). Publishes internal RFCs and architectural guidelines that shape the organisation.
+
+2. REQUIRED SKILLS BY DOMAIN
+
+Backend Engineering:
+- Proficiency: Python, Go, or Java
+- Databases: PostgreSQL, MySQL, Redis
+- API design: REST, gRPC, GraphQL
+- Message queues: Kafka, RabbitMQ
+- Cloud: AWS Lambda, ECS/EKS, or GCP equivalents
+
+Frontend Engineering:
+- Proficiency: TypeScript, React or Vue
+- State management: Redux, Zustand, or Pinia
+- Testing: Jest, Playwright, Cypress
+- Build tools: Vite, Webpack
+- Accessibility: WCAG 2.1 compliance
+
+Data Engineering:
+- Proficiency: Python, SQL, Spark
+- Orchestration: Airflow, Prefect
+- Data warehousing: BigQuery, Snowflake, Redshift
+- Streaming: Kafka, Flink
+- dbt for transformations
+
+3. CULTURE FIT INDICATORS
+
+High performers at our company demonstrate:
+- Collaboration: actively participates in design reviews, code reviews, and cross-team initiatives.
+- Ownership: follows through on commitments, raises blockers early, and drives tasks to completion.
+- Continuous learning: pursues certifications, contributes to open-source, reads engineering blogs.
+- Psychological safety: creates inclusive environments, gives credit, admits mistakes openly.
+- Customer empathy: connects technical decisions to user outcomes and business impact.
+
+Red flags in candidates:
+- No peer collaboration evidence (solo projects only, no team contributions mentioned)
+- Frequent short tenures (< 6 months) at multiple companies without explanation
+- Inability to explain technical decisions made in past roles
+- Dismissive attitude toward code quality, testing, or documentation
