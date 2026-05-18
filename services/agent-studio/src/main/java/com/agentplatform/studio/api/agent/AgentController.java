@@ -39,7 +39,8 @@ public class AgentController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         var result = agentService.list(auth, PageRequest.of(page, size, Sort.by("updatedAt").descending()));
-        return ApiResponse.ok(PageResponse.of(result, a -> AgentDto.from(a, objectMapper)));
+        var mapped = result.map(a -> AgentDto.from(a, objectMapper));
+        return ApiResponse.ok(PageResponse.of(mapped));
     }
 
     @GetMapping("/{id}")

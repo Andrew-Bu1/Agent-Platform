@@ -63,6 +63,7 @@ public class SecurityConfig {
                         "/api/v1/auth/signup",
                         "/api/v1/auth/workspaces",
                         "/api/v1/auth/switch-context",
+                        "/api/v1/oauth/token",
                         "/api/v1/tenants/bootstrap"
                 ).permitAll()
                 .anyRequest().authenticated()

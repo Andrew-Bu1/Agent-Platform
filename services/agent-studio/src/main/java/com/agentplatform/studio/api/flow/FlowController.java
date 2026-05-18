@@ -39,7 +39,8 @@ public class FlowController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         var result = flowService.list(auth, PageRequest.of(page, size, Sort.by("updatedAt").descending()));
-        return ApiResponse.ok(PageResponse.of(result, FlowDto::from));
+        var mapped = result.map(FlowDto::from);
+        return ApiResponse.ok(PageResponse.of(mapped));
     }
 
     @GetMapping("/{id}")
@@ -77,7 +78,8 @@ public class FlowController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         var result = flowService.listVersions(auth, id, PageRequest.of(page, size, Sort.by("version").descending()));
-        return ApiResponse.ok(PageResponse.of(result, v -> FlowVersionDto.from(v, objectMapper)));
+        var mapped = result.map(v -> FlowVersionDto.from(v, objectMapper));
+        return ApiResponse.ok(PageResponse.of(mapped));
     }
 
     @GetMapping("/{id}/versions/{versionId}")

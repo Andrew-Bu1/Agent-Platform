@@ -3,6 +3,7 @@ package com.agentplatform.studio.service;
 import com.agentplatform.common.exception.AppException;
 import com.agentplatform.common.exception.ErrorCode;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
@@ -13,7 +14,10 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Thin proxy for the Agent Orchestrator service (bearer forwarded).
@@ -25,6 +29,8 @@ public class OrchestratorProxyService {
 
     @Qualifier("orchestratorClient")
     private final RestClient orchestratorClient;
+
+    private final ObjectMapper objectMapper;
 
     public JsonNode get(String path) {
         try {
@@ -45,6 +51,59 @@ public class OrchestratorProxyService {
                     .body(body)
                     .retrieve()
                     .body(JsonNode.class);
+        } catch (HttpClientErrorException e) {
+            throw mapClientError(e);
+        }
+    }
+
+    public JsonNode createRun(String path, Object body) {
+        try {
+            return orchestratorClient.post()
+                    .uri(path)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.TEXT_EVENT_STREAM)
+                    .body(body)
+                    .exchange((req, resp) -> {
+                        String eventType = null;
+                        String data = null;
+
+                        try (BufferedReader reader = new BufferedReader(
+                                new InputStreamReader(resp.getBody(), StandardCharsets.UTF_8))) {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                if (line.startsWith("event:")) {
+                                    eventType = line.substring("event:".length()).trim();
+                                } else if (line.startsWith("data:")) {
+                                    data = line.substring("data:".length()).trim();
+                                } else if (line.isBlank() && data != null) {
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (data == null) {
+                            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Orchestrator did not return a run id");
+                        }
+
+                        try {
+                            JsonNode payload = objectMapper.readTree(data);
+                            if ("RunCreated".equals(eventType) && payload.has("run_id")) {
+                                var node = objectMapper.createObjectNode()
+                                        .put("id", payload.get("run_id").asText())
+                                        .put("status", payload.path("status").asText("pending"))
+                                        .put("flowVersionId", payload.path("flow_version_id").asText(""))
+                                        .put("createdAt", payload.path("created_at").asText(""))
+                                        .put("updatedAt", payload.path("updated_at").asText(""));
+                                if (payload.hasNonNull("thread_id")) {
+                                    node.put("threadId", payload.get("thread_id").asText());
+                                }
+                                return node;
+                            }
+                            return payload;
+                        } catch (IOException e) {
+                            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Invalid orchestrator run response");
+                        }
+                    });
         } catch (HttpClientErrorException e) {
             throw mapClientError(e);
         }

@@ -58,6 +58,19 @@ public class AihubProxyService {
         }
     }
 
+    public JsonNode patch(String path, Object body) {
+        try {
+            return aihubClient.patch()
+                    .uri(path)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (HttpClientErrorException e) {
+            throw mapClientError(e);
+        }
+    }
+
     public JsonNode delete(String path) {
         try {
             return aihubClient.delete()

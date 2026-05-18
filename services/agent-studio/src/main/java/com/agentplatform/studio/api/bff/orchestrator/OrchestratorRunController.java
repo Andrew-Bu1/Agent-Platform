@@ -20,11 +20,19 @@ public class OrchestratorRunController {
 
     private final OrchestratorProxyService orchestrator;
 
+    @GetMapping
+    public ResponseEntity<ApiResponse<JsonNode>> list(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        JsonNode result = orchestrator.get("/runs?page=" + page + "&size=" + size);
+        return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<JsonNode>> create(@RequestBody JsonNode body) {
         // The orchestrator streams SSE on POST /runs, but we return the initial run object
         // as JSON here. The client should use GET /runs/{id}/events for the stream.
-        JsonNode result = orchestrator.post("/runs", body);
+        JsonNode result = orchestrator.createRun("/runs", body);
         return ResponseEntity.status(201).body(ApiResponse.ok(result));
     }
 
@@ -62,6 +70,12 @@ public class OrchestratorRunController {
     @GetMapping("/pending-review")
     public ResponseEntity<ApiResponse<JsonNode>> listPendingReview() {
         JsonNode result = orchestrator.get("/runs/pending-review");
+        return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    @GetMapping("/{id}/node-runs")
+    public ResponseEntity<ApiResponse<JsonNode>> listNodeRuns(@PathVariable String id) {
+        JsonNode result = orchestrator.get("/runs/" + id + "/node-runs");
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
 }

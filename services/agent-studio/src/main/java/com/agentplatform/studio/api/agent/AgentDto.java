@@ -8,6 +8,7 @@ import lombok.Getter;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Getter
@@ -23,11 +24,20 @@ public class AgentDto {
     private Object definition;
     private List<UUID> toolIds;
     private String modelId;
+    private List<String> requiredPermissionKeys; // derived from agentKind, not stored
     private String status;
     private UUID   createdByUserId;
     private UUID   updatedByUserId;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+
+    private static final Map<String, List<String>> KIND_PERMISSIONS = Map.of(
+            "llm",          List.of("model:invoke"),
+            "tool_calling", List.of("model:invoke"),
+            "react",        List.of("model:invoke", "agent:run"),
+            "chain",        List.of("model:invoke", "flow:run"),
+            "custom",       List.of()
+    );
 
     public static AgentDto from(Agent a, ObjectMapper mapper) {
         return AgentDto.builder()
@@ -40,6 +50,7 @@ public class AgentDto {
                 .definition(parseJson(a.getDefinitionJson(), mapper))
                 .toolIds(a.getToolIds())
                 .modelId(a.getModelId())
+                .requiredPermissionKeys(KIND_PERMISSIONS.getOrDefault(a.getAgentKind(), List.of()))
                 .status(a.getStatus())
                 .createdByUserId(a.getCreatedByUserId())
                 .updatedByUserId(a.getUpdatedByUserId())

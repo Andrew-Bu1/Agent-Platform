@@ -39,7 +39,8 @@ public class ToolController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         var result = toolService.list(auth, PageRequest.of(page, size, Sort.by("updatedAt").descending()));
-        return ApiResponse.ok(PageResponse.of(result, t -> ToolDto.from(t, objectMapper)));
+        var mapped = result.map(t -> ToolDto.from(t, objectMapper));
+        return ApiResponse.ok(PageResponse.of(mapped));
     }
 
     @GetMapping("/{id}")

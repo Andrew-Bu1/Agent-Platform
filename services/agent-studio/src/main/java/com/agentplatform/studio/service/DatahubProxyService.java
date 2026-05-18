@@ -5,11 +5,17 @@ import com.agentplatform.common.exception.ErrorCode;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 
 /**
  * Thin proxy for the DataHub service (bearer forwarded).
@@ -38,6 +44,36 @@ public class DatahubProxyService {
                     .uri(path)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (HttpClientErrorException e) {
+            throw mapClientError(e);
+        }
+    }
+
+    public JsonNode uploadMultipart(String path, MultipartFile file, String metadata) {
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new AppException(ErrorCode.INTERNAL_SERVER_ERROR, "Failed to read upload file");
+        }
+
+        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
+        String filename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+        form.add("file", new ByteArrayResource(bytes) {
+            @Override
+            public String getFilename() { return filename; }
+        });
+        if (metadata != null && !metadata.isBlank()) {
+            form.add("metadata", metadata);
+        }
+
+        try {
+            return datahubClient.post()
+                    .uri(path)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(form)
                     .retrieve()
                     .body(JsonNode.class);
         } catch (HttpClientErrorException e) {

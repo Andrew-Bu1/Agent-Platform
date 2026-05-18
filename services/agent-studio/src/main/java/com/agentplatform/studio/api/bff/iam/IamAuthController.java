@@ -70,6 +70,13 @@ public class IamAuthController {
         return iamProxy.authPost("/auth/logout", null);
     }
 
+    /** Switch to a different tenant + workspace while already authenticated. */
+    @PostMapping("/switch")
+    public JsonNode switchWorkspace(@AuthenticationPrincipal AuthContext auth,
+                                    @RequestBody JsonNode body) {
+        return iamProxy.authPost("/auth/switch", body);
+    }
+
     @GetMapping("/me")
     public JsonNode me(@AuthenticationPrincipal AuthContext auth) {
         return iamProxy.authGet("/auth/me");
