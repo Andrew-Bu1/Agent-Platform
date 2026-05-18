@@ -40,6 +40,14 @@ POST /auth/switch-context  [pre-auth token]
 Accepts `preAuthToken` + `tenantId` + `workspaceId`.  
 Issues **access token** (JWT RS256) + **refresh token** bound to that tenant/workspace context.
 
+### Switch Context (authenticated — already logged in)
+```
+POST /auth/switch  [authenticated]
+```
+Accepts `tenantId` + `workspaceId` body while the caller already holds a valid access token.  
+Re-evaluates permissions for the new context and issues a new access + refresh token pair.  
+Use this when the user switches tenant/workspace without going through the pre-auth flow again.
+
 ### Refresh Tokens
 ```
 POST /auth/refresh  [public — takes refresh token]
@@ -123,14 +131,18 @@ POST   /tenants/{tenantId}/members/{userId}/roles          — assign role by ke
 DELETE /tenants/{tenantId}/members/{userId}/roles/{roleKey} — revoke role  [tenant_admin]
 ```
 
+Invite body: `{ email, roleKey }`. The target user must already exist. Tenant member responses include `membershipId`, `userId`, `email`, `name`, `joinedAt`, and `roles`.
+
 ### Workspace Members
 ```
 GET    /tenants/{tenantId}/workspaces/{workspaceId}/members                              — list
-POST   /tenants/{tenantId}/workspaces/{workspaceId}/members                              — invite  [tenant_admin]
+POST   /tenants/{tenantId}/workspaces/{workspaceId}/members                              — invite existing tenant member by email  [tenant_admin]
 DELETE /tenants/{tenantId}/workspaces/{workspaceId}/members/{userId}                     — remove  [tenant_admin]
-POST   /tenants/{tenantId}/workspaces/{workspaceId}/members/{userId}/roles               — assign role
-DELETE /tenants/{tenantId}/workspaces/{workspaceId}/members/{userId}/roles/{roleKey}     — revoke role
+POST   /tenants/{tenantId}/workspaces/{workspaceId}/members/{userId}/roles               — assign role  [tenant_admin]
+DELETE /tenants/{tenantId}/workspaces/{workspaceId}/members/{userId}/roles/{roleKey}     — revoke role  [tenant_admin]
 ```
+
+Workspace invite body: `{ email, roleKey }`. The user must already be an active tenant member. Workspace member responses include `workspaceMembershipId`, `userId`, `email`, `name`, `joinedAt`, and `roles`.
 
 ---
 
@@ -145,6 +157,7 @@ Roles have a **scope type** that determines what they grant access to:
 | `workspace` | `workspace_owner`, `workspace_member`, `agent_builder`, `viewer` | tenant admin |
 
 Tenant admins can also create **custom roles** scoped to `tenant` or `workspace`.
+Custom role keys must not collide with either platform roles visible to the tenant or existing tenant-owned roles.
 
 ```
 GET    /roles                              — list roles visible to caller's tenant
@@ -256,19 +269,72 @@ DELETE /entitlements/models/{id}       — revoke model access  [platform_admin]
 
 Model entitlements include rate-limit fields: `rpmLimit`, `tpmLimit`, `dailyTokenLimit`, `monthlyTokenLimit`.
 
+**Note:** `/entitlements/*` always operates on the tenant bound to the caller's current JWT. For cross-tenant management use the `/platform/*` endpoints below.
+
+---
+
+## 10. Platform Admin API (`/platform`)
+
+These endpoints allow a **platform admin** to inspect and manage any tenant's data, regardless of the caller's own tenant context.
+
+### Tenant & Workspace Listing
+```
+GET  /platform/tenants                              — list all tenants on the platform  [platform_admin]
+GET  /platform/tenants/{tenantId}/workspaces        — list workspaces for any tenant    [platform_admin]
+```
+
+> **Note:** The internal `platform` anchor tenant (`plan_key = 'platform'`) that holds the platform admin
+> account itself is **excluded** from the tenant listing. It is an implementation detail and should not
+> appear in admin UIs.
+
+### Cross-Tenant Entitlements
+```
+GET    /platform/tenants/{tenantId}/entitlements/features          — list feature entitlements for any tenant  [platform_admin]
+GET    /platform/tenants/{tenantId}/entitlements/features/all      — full feature entitlement records          [platform_admin]
+POST   /platform/tenants/{tenantId}/entitlements/features          — grant feature                             [platform_admin]
+PATCH  /platform/tenants/{tenantId}/entitlements/features/{id}     — enable/disable or update config          [platform_admin]
+DELETE /platform/tenants/{tenantId}/entitlements/features/{id}     — revoke feature                           [platform_admin]
+
+GET    /platform/tenants/{tenantId}/entitlements/models            — list model entitlements for any tenant   [platform_admin]
+GET    /platform/tenants/{tenantId}/entitlements/models/all        — full model entitlement records           [platform_admin]
+POST   /platform/tenants/{tenantId}/entitlements/models            — grant model access                       [platform_admin]
+PATCH  /platform/tenants/{tenantId}/entitlements/models/{id}       — update rate limits                       [platform_admin]
+DELETE /platform/tenants/{tenantId}/entitlements/models/{id}       — revoke model access                      [platform_admin]
+```
+
+### Cross-Tenant Roles & Permissions (read-only)
+
+These endpoints let a platform admin inspect **any tenant's role and permission configuration** without
+being a member of that tenant.
+
+```
+GET  /platform/tenants/{tenantId}/roles        — list platform system roles + tenant's custom roles        [platform_admin]
+GET  /platform/tenants/{tenantId}/permissions  — list platform system permissions + tenant's custom ones   [platform_admin]
+```
+
+Both endpoints return the same records that `GET /roles` and `GET /permissions` would return to a member
+of that tenant — i.e. platform-level entries (`tenant_id IS NULL`) plus the tenant's own entries.
+They are **read-only**: creating, updating, or deleting roles/permissions in another tenant's namespace
+must still be done by a `tenant_admin` of that tenant.
+
+All `/platform/*` endpoints require the caller's JWT to contain a role with `scope_type = 'platform'` (i.e. `platform_admin`). The bootstrap admin account seeded by V7 (`admin@platform.dev`) holds this role.
+
 ---
 
 ## Access Control Summary
 
 | Actor | Can do |
 |---|---|
-| **Platform admin** | Manage features, grant/revoke entitlements for any tenant |
+| **Platform admin** | Manage features, grant/revoke entitlements for any tenant; **also has full `tenant_admin` rights within their own platform tenant** |
 | **Tenant admin** | Manage their tenant's workspaces, members, custom roles, custom permissions, service clients |
 | **Workspace owner** | Full control within a workspace (assigned on bootstrap/create) |
 | **Workspace member** | Standard access within a workspace |
 | **Service client** | M2M token via `client_credentials`; permissions explicitly assigned by tenant admin |
 
 **Platform admin** = any user whose active membership includes a role with `scope_type = 'platform'`.  
+`requireTenantAdmin` accepts either `platform_admin` or `tenant_admin` role — platform admin can therefore
+manage members, roles, workspaces, and service clients within the platform tenant without needing a
+separate `tenant_admin` role assignment.  
 System roles seeded at DB init: `platform_admin`, `tenant_admin`, `workspace_owner`, `workspace_member`.
 
 ---
@@ -292,7 +358,7 @@ Access tokens (RS256) carry:
 | `exp` | Unix timestamp | Unix timestamp | Expiration |
 
 Tokens are verified by downstream services using the public key from `/.well-known/jwks.json`.  
-Downstream services must validate `iss`, `aud`, `token_type`, and `exp`. They must **not** call IAM on every request — JWKS is cached locally and re-fetched only on unknown `kid` (key rotation).
+Downstream services must validate `iss`, `aud`, `token_type`, and `exp`. They must **not** call IAM on every request — JWKS is cached locally (keyed by `kid`) and re-fetched only when an unknown `kid` is encountered (transparent key rotation). Re-fetches are rate-limited to at most once per 60 seconds per service instance to prevent a DoS on the IAM JWKS endpoint via tokens with random key IDs.
 
 ---
 

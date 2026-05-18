@@ -193,17 +193,17 @@ sequenceDiagram
 
 ## 5. Downstream JWT Verification (no IAM roundtrip)
 
-How DataHub, AIHub, and other downstream services verify tokens locally using the cached JWKS public key. IAM is only called once per key rotation event, not on every request.
+How DataHub, AIHub, Agent Studio, and other downstream services verify tokens locally using the cached JWKS public key. IAM is only called on an unknown `kid` (key rotation), not on every request. Re-fetches are rate-limited to at most once per 60 seconds to prevent a DoS on the IAM JWKS endpoint via tokens with random key IDs.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant C as Client
-    participant SVC as Downstream Service<br/>(DataHub / AIHub)
-    participant JWKS as JWKS Cache<br/>(in-memory)
+    participant SVC as Downstream Service<br/>(DataHub / AIHub / Agent Studio)
+    participant JWKS as JWKS Cache<br/>(in-memory, keyed by kid)
     participant IAM as IAM Service<br/>/.well-known/jwks.json
 
-    Note over SVC,IAM: ── Service startup ──
+    Note over SVC,IAM: ── Service startup (initial load) ──
     SVC->>IAM: GET /.well-known/jwks.json
     IAM-->>SVC: {keys: [{kid, kty, alg, n, e}]}
     SVC->>JWKS: store kid → RSAPublicKey map
@@ -215,11 +215,21 @@ sequenceDiagram
 
     alt kid is known (cache hit)
         JWKS-->>SVC: RSAPublicKey
-    else kid is unknown (key rotation just happened)
-        SVC->>IAM: GET /.well-known/jwks.json
-        IAM-->>SVC: updated key set with new kid
-        SVC->>JWKS: refresh cache
-        JWKS-->>SVC: RSAPublicKey (or 401 if still unknown)
+    else kid is unknown — acquire refresh lock (serializes concurrent refresh attempts)
+        SVC->>JWKS: double-check after acquiring lock
+        alt another goroutine/thread already refreshed
+            JWKS-->>SVC: RSAPublicKey (cache hit after lock)
+        else still missing
+            alt last fetch was < 60s ago (rate-limited)
+                SVC-->>C: 401 Unknown signing key
+                Note over SVC,C: Protects IAM from DoS via random kids
+            else rate limit elapsed — fetch allowed
+                SVC->>IAM: GET /.well-known/jwks.json
+                IAM-->>SVC: updated key set with new kid
+                SVC->>JWKS: replace cache with new key set
+                JWKS-->>SVC: RSAPublicKey (or 401 if still unknown)
+            end
+        end
     end
 
     SVC->>SVC: verify RS256 signature using RSAPublicKey
@@ -236,6 +246,15 @@ sequenceDiagram
         SVC-->>C: 401 Unauthorized
     end
 ```
+
+**Implementation notes per service:**
+
+| Service | Language | Initial load | Re-fetch guard |
+|---|---|---|---|
+| Agent Studio | Java | `JwksClient` constructor (startup) | `ReentrantLock` + 60 s rate limit |
+| Agent Orchestrator | Go | First request (on-demand) | `sync.Mutex` + 60 s rate limit |
+| DataHub | Go | First request (on-demand) | `sync.Mutex` + 60 s rate limit |
+| AIHub | Python | `lifespan` startup + on-demand | `asyncio.Lock` + 60 s rate limit |
 
 ---
 
@@ -298,6 +317,8 @@ sequenceDiagram
 ---
 
 ## 8. Signing Key Rotation
+
+> **⚠ NOT YET IMPLEMENTED** — The `POST /admin/signing-keys/rotate` controller does not exist. The `oauth_signing_keys` table and JWKS endpoint are in place; the rotation trigger API is pending. The diagram below describes the intended design.
 
 How IAM rotates the RSA key pair used to sign JWTs without invalidating in-flight tokens.
 

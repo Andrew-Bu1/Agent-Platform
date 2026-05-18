@@ -36,21 +36,27 @@ All Flyway migrations live in `services/agent-studio/src/main/resources/db/migra
 
 | Migration | Description |
 |---|---|
-| `V1__init.sql` | Core schema — agents, tools, flows, flow_versions, threads, runs, node_runs, run_events |
+| `V1__init.sql` | Core schema — agents, tools, flows, flow_versions, threads, runs, node_runs, messages, run_events, human_review_tasks |
 | `V2__agent_tool_ids.sql` | Adds `tool_ids UUID[]` column to agents |
 | `V3__agent_model_id.sql` | Adds `model_id VARCHAR(255)` column to agents |
+| `V4__tool_type_expand.sql` | Expands `tool_type` CHECK constraint with additional types |
+
+> **Note on `messages` table:** `messages` has `node_run_id UUID NULL` and `metadata_json JSONB` columns. The agent-worker `MessageRepository` selects and inserts both of these fields. Do not omit them when extending message queries.
 
 ### Key Tables
 
 ```
 agents          — reusable agent/team library items
 tools           — reusable tool definitions (http, function, webhook, …)
+                  has input_schema JSONB + output_schema JSONB
 flows           — mutable flow canvas metadata
 flow_versions   — immutable published snapshot (graph_json + settings_json)
 threads         — conversation/session boundary (links runs together)
 runs            — one execution of one flow_version
 node_runs       — per-node execution record within a run
+messages        — conversation messages (node_run_id + metadata_json nullable)
 run_events      — persisted SSE events for reconnect/replay
+human_review_tasks — first-class human review/approval task
 ```
 
 ---
@@ -103,7 +109,9 @@ All responses: `ApiResponse<T>` envelope from `libs/java/common`.
 **Publish validation** (enforced in `FlowService.publish()`):
 - `graph_json` must be valid JSON
 - `entry_node_id` must be non-null and non-blank
-- `nodes` must be a non-empty object
+- `nodes` must be a non-empty object (keyed by node ID — not an array)
+
+See [graph_json.md](../../agent_layer/graph_json.md) for the complete node schema and agentic pattern reference.
 
 ---
 
@@ -153,19 +161,38 @@ Browser / Agent Studio Web
 | `GET` | `/api/v1/tenants` | `GET /tenants` |
 | `POST` | `/api/v1/tenants` | `POST /tenants` |
 | `GET` | `/api/v1/tenants/{id}` | `GET /tenants/{id}` |
-| `PUT` | `/api/v1/tenants/{id}` | `PUT /tenants/{id}` |
 | `GET` | `/api/v1/tenants/{id}/members` | `GET /tenants/{id}/members` |
 | `POST` | `/api/v1/tenants/{id}/members` | `POST /tenants/{id}/members` |
 | `DELETE` | `/api/v1/tenants/{id}/members/{uid}` | `DELETE /tenants/{id}/members/{uid}` |
-| `PUT` | `/api/v1/tenants/{id}/members/{uid}/role` | `PUT /tenants/{id}/members/{uid}/role` |
+| `POST` | `/api/v1/tenants/{id}/members/{uid}/roles` | `POST /tenants/{id}/members/{uid}/roles` |
+| `DELETE` | `/api/v1/tenants/{id}/members/{uid}/roles/{roleKey}` | `DELETE /tenants/{id}/members/{uid}/roles/{roleKey}` |
 | `GET` | `/api/v1/tenants/{id}/workspaces` | `GET /tenants/{id}/workspaces` |
 | `POST` | `/api/v1/tenants/{id}/workspaces` | `POST /tenants/{id}/workspaces` |
 | `GET` | `/api/v1/tenants/{id}/workspaces/{wid}` | `GET /tenants/{id}/workspaces/{wid}` |
-| `PUT` | `/api/v1/tenants/{id}/workspaces/{wid}` | `PUT /tenants/{id}/workspaces/{wid}` |
 | `GET` | `/api/v1/tenants/{id}/workspaces/{wid}/members` | `GET /tenants/{id}/workspaces/{wid}/members` |
 | `POST` | `/api/v1/tenants/{id}/workspaces/{wid}/members` | `POST /tenants/{id}/workspaces/{wid}/members` |
 | `DELETE` | `/api/v1/tenants/{id}/workspaces/{wid}/members/{uid}` | `DELETE /tenants/{id}/workspaces/{wid}/members/{uid}` |
-| `PUT` | `/api/v1/tenants/{id}/workspaces/{wid}/members/{uid}/role` | `PUT /tenants/{id}/workspaces/{wid}/members/{uid}/role` |
+| `POST` | `/api/v1/tenants/{id}/workspaces/{wid}/members/{uid}/roles` | `POST /tenants/{id}/workspaces/{wid}/members/{uid}/roles` |
+| `DELETE` | `/api/v1/tenants/{id}/workspaces/{wid}/members/{uid}/roles/{roleKey}` | `DELETE /tenants/{id}/workspaces/{wid}/members/{uid}/roles/{roleKey}` |
+
+Tenant and workspace member invite payloads are `{ email, roleKey }`. Member mutation endpoints require `tenant_admin`. Member list responses include `joinedAt`.
+
+**Role and permission management** (JWT required):
+
+| Method | BFF Path | IAM Path |
+|---|---|---|
+| `GET` | `/api/v1/roles` | `GET /roles` |
+| `POST` | `/api/v1/roles` | `POST /roles` |
+| `GET` | `/api/v1/roles/{roleId}` | `GET /roles/{roleId}` |
+| `PATCH` | `/api/v1/roles/{roleId}` | `PATCH /roles/{roleId}` |
+| `DELETE` | `/api/v1/roles/{roleId}` | `DELETE /roles/{roleId}` |
+| `GET` | `/api/v1/roles/{roleId}/permissions` | `GET /roles/{roleId}/permissions` |
+| `POST` | `/api/v1/roles/{roleId}/permissions` | `POST /roles/{roleId}/permissions` |
+| `DELETE` | `/api/v1/roles/{roleId}/permissions/{permissionId}` | `DELETE /roles/{roleId}/permissions/{permissionId}` |
+| `GET` | `/api/v1/permissions` | `GET /permissions` |
+| `GET` | `/api/v1/permissions/me` | `GET /permissions/me` |
+| `POST` | `/api/v1/permissions` | `POST /permissions` |
+| `DELETE` | `/api/v1/permissions/{id}` | `DELETE /permissions/{id}` |
 
 ### AIHub Proxy (`/api/v1/aihub/**`)
 
@@ -184,6 +211,8 @@ Browser / Agent Studio Web
 | `GET` | `/api/v1/aihub/model-usage-logs` | `GET /v1/model-usage-logs` |
 
 ### DataHub Proxy (`/api/v1/datahub/**`)
+
+Agent Studio wraps DataHub's raw downstream JSON in the standard `ApiResponse<T>` envelope before returning it to the web client.
 
 | Method | BFF Path | DataHub Path |
 |---|---|---|
@@ -204,6 +233,9 @@ Browser / Agent Studio Web
 | `DELETE` | `/api/v1/datahub/ingestions/{id}` | `DELETE /ingestions/{id}` |
 | `GET` | `/api/v1/datahub/ingestions/{ingId}/chunks` | `GET /ingestions/{ingId}/chunks` |
 | `GET` | `/api/v1/datahub/chunks/{id}` | `GET /chunks/{id}` |
+| `GET` | `/api/v1/datahub/ingestions/dlq` | `GET /ingestions/dlq` |
+| `POST` | `/api/v1/datahub/ingestions/dlq/replay` | `POST /ingestions/dlq/replay` |
+| `DELETE` | `/api/v1/datahub/ingestions/dlq` | `DELETE /ingestions/dlq` |
 
 ### Orchestrator Proxy (`/api/v1/orchestrator/**`)
 

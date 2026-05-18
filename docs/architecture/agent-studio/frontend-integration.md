@@ -1,6 +1,6 @@
 # Frontend Integration Guide
 
-**Last updated:** 2026-05-10
+**Last updated:** 2026-05-15
 
 This guide explains how the **Agent Studio Web** frontend (React/Vite, `services/agent-studio-web/`) should talk to the backend. The backend is fully implemented and ready for the frontend to connect.
 
@@ -180,6 +180,8 @@ GET    /api/v1/aihub/model-usage-logs
 
 ### DataHub (`/api/v1/datahub`)
 
+All DataHub BFF responses use the standard `ApiResponse<T>` envelope even though the downstream DataHub service returns raw JSON. The frontend should read payloads from `data`.
+
 ```
 GET|POST              /api/v1/datahub/datasources
 GET|PUT|DELETE        /api/v1/datahub/datasources/{id}
@@ -192,18 +194,141 @@ GET                   /api/v1/datahub/ingestions/{ingId}/chunks
 GET                   /api/v1/datahub/chunks/{id}
 ```
 
+#### DataHub DLQ Admin
+
+Dead-letter queue endpoints for failed ingestion jobs. Intended for platform administrators.
+
+```
+GET    /api/v1/datahub/ingestions/dlq?limit=100   list DLQ entries (default limit 100)
+POST   /api/v1/datahub/ingestions/dlq/replay       re-enqueue all entries to the ingestion queue
+DELETE /api/v1/datahub/ingestions/dlq              permanently clear the DLQ
+```
+
+**`GET /api/v1/datahub/ingestions/dlq` response:**
+```json
+{
+  "total": 3,
+  "entries": [
+    {
+      "queue": "datahub:queue:ingestion",
+      "payload": "{...}",
+      "error": "embedding model not found",
+      "queued_at": "2026-05-15T12:34:56Z"
+    }
+  ]
+}
+```
+
+**`POST /api/v1/datahub/ingestions/dlq/replay` response:**
+```json
+{ "replayed": 3 }
+```
+
+**`DELETE /api/v1/datahub/ingestions/dlq`** — returns `204 No Content`.
+
+> The DLQ Redis key is configured via `REDIS_DLQ_KEY` on the DataHub service (default: `datahub:queue:dlq`). Replay moves each entry from the DLQ back to the source queue key stored in `entry.queue`.
+
 ### IAM — Tenant Management (`/api/v1/tenants`)
 
 ```
 GET|POST              /api/v1/tenants
-GET|PUT               /api/v1/tenants/{id}
+GET                   /api/v1/tenants/{id}
 GET|POST              /api/v1/tenants/{id}/members
-DELETE|PUT            /api/v1/tenants/{id}/members/{uid}[/role]
+DELETE                /api/v1/tenants/{id}/members/{uid}
+POST                  /api/v1/tenants/{id}/members/{uid}/roles            { roleKey }
+DELETE                /api/v1/tenants/{id}/members/{uid}/roles/{roleKey}
 GET|POST              /api/v1/tenants/{id}/workspaces
-GET|PUT               /api/v1/tenants/{id}/workspaces/{wid}
+GET                   /api/v1/tenants/{id}/workspaces/{wid}
 GET|POST              /api/v1/tenants/{id}/workspaces/{wid}/members
-DELETE|PUT            /api/v1/tenants/{id}/workspaces/{wid}/members/{uid}[/role]
+DELETE                /api/v1/tenants/{id}/workspaces/{wid}/members/{uid}
+POST                  /api/v1/tenants/{id}/workspaces/{wid}/members/{uid}/roles          { roleKey }
+DELETE                /api/v1/tenants/{id}/workspaces/{wid}/members/{uid}/roles/{roleKey}
 ```
+
+Member invite payloads:
+
+```json
+// POST /api/v1/tenants/{id}/members
+{ "email": "user@example.com", "roleKey": "tenant_admin" }
+
+// POST /api/v1/tenants/{id}/workspaces/{wid}/members
+{ "email": "user@example.com", "roleKey": "workspace_member" }
+```
+
+Member responses include `joinedAt`:
+
+```json
+{
+  "userId": "...",
+  "email": "user@example.com",
+  "name": "User Name",
+  "joinedAt": "2026-05-11T00:00:00Z",
+  "roles": ["workspace_member"]
+}
+```
+
+### IAM — Roles & Permissions (`/api/v1/roles`, `/api/v1/permissions`)
+
+```
+GET|POST              /api/v1/roles
+GET|PATCH|DELETE      /api/v1/roles/{roleId}
+GET|POST              /api/v1/roles/{roleId}/permissions
+DELETE                /api/v1/roles/{roleId}/permissions/{permissionId}
+
+GET|POST              /api/v1/permissions
+DELETE                /api/v1/permissions/{permissionId}
+GET                   /api/v1/permissions/me
+```
+
+Role/member mutation endpoints require `tenant_admin`. Role assignment validates scope: tenant member role assignments require `scopeType = "tenant"`; workspace member role assignments require `scopeType = "workspace"`.
+
+---
+
+## Flow Canvas — graph_json Contract
+
+The canvas editor (`FlowEditorPage`) saves the flow graph as `graph_json` when the user clicks **Save** or **Publish**. The orchestrator reads this JSON at run-start and must parse it without modification.
+
+### Node Types (FE → Backend)
+
+The FE `NodeKind` type and the backend `GraphNode.Type` string must always stay in sync:
+
+| Canvas `NodeKind` | Backend handling | `data` fields sent |
+|---|---|---|
+| `start` | Orchestrator inline | `{}` |
+| `end` | Orchestrator inline | `{}` |
+| `agent` | Agent Worker | `{ agentId, modelId?, maxIterations? }` |
+| `agent_team` | Agent Worker | `{ agentId, entryAgentId, exitAgentId?, memberAgentIds?, maxIterations? }` — supervisor-handoff only; no `teamType` |
+| `if_else` | Orchestrator inline | `{ ifExpression }` |
+| `human_review` | Agent Worker | `{}` |
+| `router` | Orchestrator inline | `{ routes: [{label, handle}] }` |
+| `parallel` | Orchestrator inline | `{ branchCount }` |
+| `aggregator` | Agent Worker | `{ agentId, strategy? }` |
+
+> **`agentId` is camelCase.** The orchestrator model and Go worker both use json tag `"agentId"` to match this. Never use `agent_id` in `data` objects.
+
+### graph_json Wire Format
+
+```json
+{
+  "entry_node_id": "start-1",
+  "nodes": {
+    "start-1":   { "type": "start",   "label": "Start",  "data": {},                        "position": {"x":100,"y":200} },
+    "agent-1":   { "type": "agent",   "label": "Writer", "data": { "agentId": "uuid-..." }, "position": {"x":350,"y":200} },
+    "if_else-1": { "type": "if_else", "label": "Gate",   "data": { "ifExpression": "{{.quality}} == good" }, "position": {"x":600,"y":200} },
+    "end-1":     { "type": "end",     "label": "End",    "data": {},                        "position": {"x":850,"y":200} }
+  },
+  "edges": [
+    { "id": "e0", "source": "start-1",   "target": "agent-1" },
+    { "id": "e1", "source": "agent-1",   "target": "if_else-1" },
+    { "id": "e2", "source": "if_else-1", "target": "end-1",   "label": "true"  },
+    { "id": "e3", "source": "if_else-1", "target": "agent-1", "label": "false" }
+  ]
+}
+```
+
+`nodes` is a **JSON object** (keyed by node ID), not an array. The backend calls `graph.PopulateNodeIDs()` after unmarshal to make node IDs available from map keys.
+
+Full field reference: [graph_json.md](../../agent_layer/graph_json.md)
 
 ---
 
@@ -298,15 +423,17 @@ And add a `CorsConfig.java` bean (not yet implemented — needed before FE integ
 
 | Area | Backend | Frontend |
 |---|---|---|
-| Auth (login/logout/refresh) | ✅ Ready | ⬜ Implement |
-| Multi-workspace switch | ✅ Ready | ⬜ Implement |
-| Agent CRUD | ✅ Ready | ⬜ Implement |
-| Tool CRUD | ✅ Ready | ⬜ Implement |
-| Flow canvas | ✅ Ready | ⬜ Implement |
-| Flow publish (with validation) | ✅ Ready | ⬜ Implement |
-| Thread management | ✅ Ready | ⬜ Implement |
-| Run creation + SSE stream | ✅ Ready | ⬜ Implement |
-| Human review panel | ✅ Ready | ⬜ Implement |
-| AIHub model/provider config | ✅ Ready | ⬜ Implement |
-| DataHub datasource/document | ✅ Ready | ⬜ Implement |
+| Auth (login/logout/refresh) | ✅ Ready | ✅ Implemented |
+| Multi-workspace switch | ✅ Ready | ✅ Implemented |
+| Agent CRUD | ✅ Ready | ✅ Implemented |
+| Tool CRUD | ✅ Ready | ✅ Implemented |
+| Flow canvas — all node types | ✅ Ready | ✅ Implemented |
+| Flow publish (with validation) | ✅ Ready | ✅ Implemented |
+| Thread management | ✅ Ready | ✅ Implemented |
+| Run creation + SSE stream | ✅ Ready | ✅ Implemented |
+| Human review panel | ✅ Ready | ✅ Implemented |
+| AIHub model/provider config | ✅ Ready | ✅ Implemented |
+| DataHub datasource/document/ingestion | ✅ Ready | ✅ Implemented |
+| DataHub DLQ admin (list/replay/clear) | ✅ Ready | ✅ Implemented |
+| Platform — tenant/feature/model entitlements | ✅ Ready | ✅ Implemented |
 | CORS config | ⚠️ Needs `CorsConfig.java` | — |

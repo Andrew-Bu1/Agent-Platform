@@ -6,13 +6,13 @@ AIHub is the AI model gateway for the Agent Platform. It exposes a unified REST 
 
 ## 1. Authentication
 
-Every request to AIHub requires a JWT Bearer token issued by the IAM service.
+Every AIHub API endpoint requires a JWT Bearer token issued by the IAM service, including read-only provider/model listing endpoints.
 
 **How it works:**
 
 1. The client sends `Authorization: Bearer <jwt>` on every request.
 2. AIHub extracts the `kid` (key ID) from the token header.
-3. The `JwksCache` looks up the corresponding RSA public key. If the `kid` is unknown it re-fetches the JWKS endpoint from IAM — this handles key rotation without any polling.
+3. The `JwksCache` looks up the corresponding RSA public key. If the `kid` is unknown it re-fetches the JWKS endpoint from IAM through a serialized, 60-second guarded path — this handles key rotation without polling while limiting random-`kid` traffic to IAM.
 4. The token is verified with `RS256` and its claims are parsed into a `CallerContext`.
 5. `CallerContext` carries: `subject`, `tenant_id`, `workspace_id`, `caller_type` (`user` | `service_client`), `bearer_token` (forwarded to IAM for entitlement checks), and `permissions`.
 
@@ -47,7 +47,8 @@ Returns a single provider.
   "logo_url": "https://openrouter.ai/favicon.ico",
   "base_url": "https://openrouter.ai/api/v1",
   "adapter_type": "openai_compatible",
-  "sort_order": 1
+  "sort_order": 1,
+  "api_key": "sk-..."
 }
 ```
 
@@ -56,10 +57,17 @@ Returns a single provider.
 - `local` — models loaded in-process via SentenceTransformer (embed) or CrossEncoder (rerank).
 
 ### `PATCH /v1/providers/{id}` — Update provider
-Allows updating `display_name`, `description`, `logo_url`, `base_url`, `adapter_type`, `is_active`, `sort_order`.
+Allows updating `display_name`, `description`, `logo_url`, `base_url`, `adapter_type`, `is_active`, `sort_order`, and `api_key`.
 
 ### `DELETE /v1/providers/{id}` — Delete provider
 Returns 409 if model configs reference this provider (FK constraint).
+
+### `POST /v1/providers/{id}/logo` — Upload provider logo
+Accepts a multipart file upload (`image/jpeg`, `image/png`, `image/webp`, `image/gif`). Max size 5 MiB.  
+Magic-byte validation is performed on the file content (MIME type from the client is not trusted).  
+The image is stored in MinIO at `logos/{provider_id}/logo{ext}` and the provider's `logo_url` is updated in the DB.  
+Returns the updated provider record.  
+Requires `provider:manage` permission.
 
 **API key storage:**
 Provider API keys are stored encrypted in the `config_json` column of the `providers` table using Fernet symmetric encryption. The encryption key is set via `PROVIDER_ENCRYPTION_KEY` in the environment. The plaintext key is never stored or logged — only the encrypted value lives in the DB. GET responses replace `config_json` with a `has_api_key: bool` field.
@@ -77,7 +85,10 @@ Model configs map an internal `model_key` to a specific provider and model. They
 ### `GET /v1/models`
 Query params: `operation_type` (chat|embed|rerank), `provider_key`.
 
+Returns only models the calling tenant is entitled to use — the response is filtered through the same `EntitlementCache` used by inference endpoints (see section 7). Models not present in the tenant's IAM entitlement set (or with `allowed=false`) are omitted from the list. The cache TTL is 5 minutes, so a newly granted entitlement may take up to 5 minutes to appear.
+
 ### `GET /v1/models/{id}`
+Returns 404 if the model does not exist **or** if the calling tenant is not entitled to use it. This prevents leaking the existence of models that belong to other tenants' configurations.
 
 ### `POST /v1/models` — Create model config
 
@@ -198,14 +209,21 @@ For `local` adapter models, the SentenceTransformer is loaded from `.models/{mod
 
 ## 7. Entitlement Enforcement
 
-Every inference request (chat, embed, rerank) goes through `EntitlementGuard` **before** the call reaches the provider.
+`EntitlementGuard` is the single source of truth for what each tenant is allowed to do in AIHub. It is used in two places: **model discovery** (filtering what a tenant can see) and **inference enforcement** (blocking calls the tenant is not entitled to make).
 
-### Entitlement fetch
+### Entitlement fetch and cache
+
 - AIHub calls `GET {IAM_BASE_URL}/entitlements/models` with the caller's Bearer token.
-- The response is cached in-memory per tenant for **5 minutes**.
-- Cache is invalidated on expiry — no manual invalidation endpoint.
+- IAM returns the tenant's full model entitlement list: `[{ modelKey, operationType, allowed, rpmLimit, tpmLimit, dailyTokenLimit, monthlyTokenLimit }]`.
+- The response is cached in-memory per `tenant_id` for **5 minutes** (`EntitlementCache`).
+- The same cached result is shared across model listing and all inference calls — a tenant's first request in a 5-minute window triggers one IAM fetch; all subsequent requests within that window are served from cache.
+- Cache expires on TTL — no manual invalidation endpoint.
 
-### Pre-call checks (in order)
+### Model discovery filtering
+
+`GET /v1/models` and `GET /v1/models/{id}` call `EntitlementGuard.get_allowed_keys(tenant_id, bearer_token)` which returns the set of `(model_key, operation_type)` pairs where `allowed=true`. Only models in this set are returned. Models not entitled appear as 404 on single-lookup and are silently omitted from the list.
+
+### Pre-call inference checks (in order)
 
 1. **Entitlement exists and is allowed** — tenant must have an entitlement row for `(model_key, operation_type)` with `allowed=true`. Missing row or `allowed=false` → 403.
 2. **RPM limit** — Redis `INCR aihub:rpm:{tenant_id}:{model_key}:{op}` with 60 s TTL. Count is incremented *before* the call so in-flight requests count. If count exceeds limit → 429.
@@ -226,23 +244,90 @@ If Redis is unavailable, the increment fails silently and the call is still serv
 
 ## 8. Usage Logging
 
-Every completed request (success or error) is logged to `model_usage_logs`.
+Inference requests are logged to `model_usage_logs` after entitlement rejection, provider failure, or success.
 
 Fields logged per call:
 - `tenant_id`, `workspace_id`, `user_id` / `service_client_id` — from JWT
 - `model_id`, `model_key`, `operation_type` — from model config
 - `input_tokens`, `output_tokens` — from provider response
-- `cost` — computed as `input_tokens × input_cost + output_tokens × output_cost`
-- `status` — `success` | `failed`
+- `cost` — computed for chat responses as `input_tokens × input_cost + output_tokens × output_cost`; embed/rerank currently log token-like counts without cost
+- `status` — `success` | `failed` | `rejected`
 - `error_message`, `latency_ms`
 
 Log writes are fire-and-forget — failures do not affect the API response.
 
-Usage logs can be queried via `GET /v1/usage` scoped to the caller's `tenant_id` from the JWT.
+Usage logs can be queried via `GET /v1/model-usage-logs` scoped to the caller's `tenant_id` from the JWT.
 
 ---
 
-## 9. Adapter Pattern
+## 9. Platform Analytics
+
+### `GET /v1/platform/analytics/usage`
+
+Returns aggregated token usage, cost, and request counts for the platform. Accessible via the BFF at `/api/v1/aihub/platform/analytics/usage`.
+
+**Query params:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `tenant_id` | UUID | — | Filter to a specific tenant. Behaviour depends on caller role (see below). |
+| `days` | int (1–365) | 30 | Rolling window of days to aggregate from `NOW()`. |
+
+**Permission rules (checked against JWT `permissions` claim):**
+
+| Caller role | `model:manage` | `member:manage` | `tenant_id` behaviour |
+|---|:---:|:---:|---|
+| `platform_admin` | ✓ | — | May pass any `tenant_id`, or omit to see all tenants. |
+| `tenant_admin` / `workspace_owner` | — | ✓ | If `tenant_id` is omitted, automatically scoped to caller's own tenant. If a different tenant's ID is passed → 403. |
+| All others | — | — | 403 always. |
+
+**Response body:**
+
+```json
+{
+  "totals": {
+    "request_count": 1540,
+    "input_tokens": 820000,
+    "output_tokens": 210000,
+    "cost": "2.4600",
+    "avg_latency_ms": 1234,
+    "success_count": 1510,
+    "failed_count": 12,
+    "rejected_count": 8,
+    "timeout_count": 10
+  },
+  "by_model": [
+    {
+      "model_key": "claude-3-5-sonnet",
+      "operation_type": "chat",
+      "request_count": 900,
+      "input_tokens": 600000,
+      "output_tokens": 180000,
+      "cost": "2.1000",
+      "avg_latency_ms": 1420,
+      "success_count": 890,
+      "error_count": 10
+    }
+  ],
+  "by_tenant": [
+    {
+      "tenant_id": "uuid",
+      "request_count": 900,
+      "input_tokens": 600000,
+      "output_tokens": 180000,
+      "cost": "2.1000"
+    }
+  ]
+}
+```
+
+- `by_tenant` is populated only when `tenant_id` is not filtered (platform_admin all-tenant view). It is an empty array for single-tenant queries.
+- All costs are strings representing decimal values (PostgreSQL `NUMERIC` → Python `Decimal` → JSON string).
+- The query is a single-pass SQL aggregate with `FILTER (WHERE status = '...')` clauses — no N+1 per model.
+
+---
+
+## 10. Adapter Pattern
 
 The adapter registry is built at startup from active provider rows:
 

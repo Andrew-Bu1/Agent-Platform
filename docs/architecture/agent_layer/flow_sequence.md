@@ -1,8 +1,7 @@
 # Agent Layer — Run Execution Sequence
 
-An agent run is created with a single `POST /runs` request.  
-The response is an **SSE stream** that delivers all events in real-time until the run terminates.  
-No separate GET is needed to start listening.
+An agent run is created with `POST /runs`, which returns a JSON `RunResponse`.  
+The client then opens `GET /runs/{id}/events` to receive all execution events as an SSE stream.
 
 ---
 
@@ -12,24 +11,26 @@ No separate GET is needed to start listening.
 sequenceDiagram
     autonumber
     participant C as Client
-    participant OR as Orchestrator<br/>POST /runs
+    participant OR as Orchestrator
     participant PG as PostgreSQL
     participant Redis as Redis<br/>(Queue + Pub/Sub)
     participant WK as Agent Worker
     participant AIH as AIHub<br/>POST /v1/chat/completions
 
-    C->>OR: POST /runs {flow_version_id, input}<br/>Authorization: Bearer <access_token>
+    C->>OR: POST /runs {flowVersionId, input}<br/>Authorization: Bearer <access_token>
     OR->>PG: SELECT flow_versions WHERE id=$id AND status='published'
     PG-->>OR: flow_version row (graph_json)
 
     OR->>PG: INSERT runs {id, status=pending, input_json, state_json}
     PG-->>OR: run row
 
-    Note over OR,Redis: Subscribe BEFORE starting engine — no early events missed
-    OR->>Redis: SUBSCRIBE run:{run_id}:stream
-
     Note over OR: Engine goroutine starts (background)
-    OR-->>C: HTTP 200 text/event-stream<br/>event: RunCreated<br/>data: {"run_id":"...", "status":"pending"}
+    OR-->>C: HTTP 201 JSON {success:true, data:{id, status:"pending", ...}}
+
+    Note over C,OR: Client opens SSE stream
+    C->>OR: GET /runs/{id}/events
+    OR->>Redis: SUBSCRIBE run:{run_id}:stream
+    OR-->>C: HTTP 200 text/event-stream
 
     OR->>PG: UPDATE runs SET status='running', started_at=NOW()
     OR->>Redis: PUBLISH run:{run_id}:stream → SSEEvent{type:"RunStarted"}
@@ -82,7 +83,7 @@ sequenceDiagram
     participant Redis as Redis
     participant WK as Agent Worker
 
-    Note over C,OR: POST /runs → SSE stream opened (same as above)
+    Note over C,OR: POST /runs → 201 JSON; client opens GET /runs/{id}/events (SSE)
 
     OR->>OR: dispatchNode(start)  — inline, no worker
     OR-->>C: event: NodeStarted / NodeCompleted (start node)
@@ -133,7 +134,36 @@ sequenceDiagram
 
 ---
 
+## Hierarchical Team (agent_team node)
+
+The `agent_team` node is dispatched to the **Agent Worker** as a single job. The worker handles supervisor/member coordination internally. From the orchestrator's perspective it behaves identically to an `agent` node — one `NodeJob` in, one `NodeResult` out.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant OR as Orchestrator (Engine)
+    participant Redis as Redis
+    participant WK as Agent Worker
+    participant AIH as AIHub
+
+    OR->>Redis: RPUSH → NodeJob{node_type:"agent_team", node_config:{agentId, memberAgentIds, ...}}
+    OR-->>C: event: NodeStarted {node_id: "team-1"}
+
+    Redis-->>WK: NodeJob
+    WK->>AIH: Supervisor ReAct loop (coordinates member agents)
+    WK-->>Redis: NodeResult{status:"completed", output_json}
+
+    OR-->>C: event: NodeCompleted {node_id: "team-1"}
+    Note over OR: advanceFrom(team-1) → next node
+```
+
+The `agentId` field in `node_config.data` must be the **supervisor** agent UUID. The supervisor's member agents are in `memberAgentIds`. The canvas form writes both `agentId` and `entryAgentId` to the same value when the supervisor is selected.
+
+---
+
 ## Self-Correct Loop (if_else back-edge)
+
+The `if_else` node is dispatched **inline** by the orchestrator. It evaluates `data.ifExpression` against the previous node's `output_json` and routes to the `"true"` or `"false"` outgoing edge. A back-edge on the `"false"` branch re-dispatches the generator node.
 
 The `NodeIterations` counter (max 25) prevents runaway loops.
 
@@ -144,22 +174,23 @@ sequenceDiagram
     participant Redis as Redis
     participant WK as Agent Worker
 
-    OR->>Redis: RPUSH → NodeJob(generate, iteration=1)
+    OR->>Redis: RPUSH → NodeJob(generate-agent, iteration=1)
     Redis-->>WK: NodeJob
-    WK-->>Redis: NodeResult(output_json)
+    WK-->>Redis: NodeResult({score:"fail"})
 
-    OR->>Redis: RPUSH → NodeJob(review, iteration=1)
+    Note over OR: advanceFrom(generate-agent) → if_else node (inline)
+    OR->>OR: evalExpression("{{.score}} == pass", output) → false
+    Note over OR: route to "false" edge → back to generate-agent
+
+    OR->>Redis: RPUSH → NodeJob(generate-agent, iteration=2)
+    Note over OR: NodeIterations["generate-agent"] = 2
     Redis-->>WK: NodeJob
-    WK-->>Redis: NodeResult({route:"retry"} or {route:"accept"})
+    WK-->>Redis: NodeResult({score:"pass"})
 
-    alt route == "retry" (back-edge to generate)
-        OR->>Redis: RPUSH → NodeJob(generate, iteration=2)
-        Note over OR: NodeIterations["generate"] = 2
-    else route == "accept"
-        OR->>OR: advanceFrom(review) → end node
-    end
+    Note over OR: evalExpression → true → route to "true" edge → end node
+    OR->>OR: advanceFrom(if_else) → end node
 
-    Note over OR: Guard: iteration > 25 → failRun("node exceeded max iterations")
+    Note over OR: Guard: NodeIterations[node] > 25 → failRun("node exceeded max iterations")
 ```
 
 ---

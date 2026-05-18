@@ -299,7 +299,7 @@ Assigns a **workspace-level** role to a `workspace_membership`. Determines what 
 OAuth2 `client_credentials` clients for service-to-service communication.
 - `client_id` is globally unique (not tenant-scoped).
 - `secret_hash` — BCrypt hash of the plain secret. The plain secret is only returned at creation/rotation.
-- `allowed_audiences` — JSONB array of audience strings the client may request (e.g. `["aihub", "datahub"]`). Validated at `/oauth/token`.
+- `allowed_audiences` — JSONB array of audience strings embedded into the service-client access token (e.g. `["aihub", "datahub"]`). The current `/oauth/token` endpoint does not accept a requested audience parameter.
 - `access_token_ttl_seconds` — per-client configurable TTL (default 3600).
 - `is_active = false` → token requests rejected immediately.
 
@@ -377,3 +377,5 @@ Grants a tenant access to a specific AI model and enforces rate limits.
 | V3 | `V3__permissions_tenant_scoping.sql` | Adds `tenant_id` column to `permissions`; drops global unique constraints; adds partial unique indexes for platform-level and tenant-scoped permissions |
 | V4 | `V4__seed_system_roles.sql` | Seeds `platform_admin`, `tenant_admin`, `workspace_owner`, `workspace_member` with fixed UUIDs (idempotent) |
 | V5 | `V5__seed_permissions_and_roles.sql` | Seeds system permissions; links `tenant_admin` and `workspace_owner` to all permissions; adds `agent_builder` and `viewer` workspace roles with their permission grants |
+| V6 | `V6__provider_model_permissions.sql` | Adds `provider:manage` and `model:manage` system permissions; grants both to `platform_admin` role (fixed UUID `0001`) |
+| V7 | `V7__seed_platform_admin.sql` | Seeds the platform tenant (`id = 00000000-0000-0000-0003-000000000001`), platform admin user (`admin@platform.dev`, bcrypt of `Admin@1234`), its membership, and assigns the `platform_admin` role — provides an initial super-admin account for bootstrap |

@@ -24,13 +24,14 @@ sequenceDiagram
     Redis-->>WK: NodeJob
 
     WK->>PG: INSERT human_review_tasks {id, run_id, node_run_id, status="waiting", payload}
-    WK->>Redis: RPUSH agent:queue:event → NodeResult{events:[HumanReviewRequested{task_id}], status="completed"}
+    WK->>Redis: PUBLISH run:{run_id}:stream → SSEEvent{type:"HumanReviewRequested"} (real-time)
+    OR-->>C: event: HumanReviewRequested<br/>data: {"task_id":"...", "run_id":"...", "node_run_id":"..."}
+    WK->>Redis: RPUSH agent:queue:event → NodeResult{events:[HumanReviewRequested], status="completed"}
 
-    OR->>OR: handleResult — detects HumanReviewRequested in events
+    OR->>OR: handleResult — persists HumanReviewRequested to run_events DB (for replay)
+    OR->>OR: detects HumanReviewRequested in events — sets human_wait state
     OR->>PG: UPDATE runs SET state_json={HumanWait:{node_id, node_run_id, task_id}}, updated_at=NOW()
     OR->>PG: UPDATE runs SET status="waiting_for_human", finished_at=NULL
-    OR->>Redis: PUBLISH run:{run_id}:stream → SSEEvent{type:"HumanReviewRequested"}
-    OR-->>C: event: HumanReviewRequested<br/>data: {"task_id":"...", "run_id":"...", "node_run_id":"..."}
 
     Note over OR: Node stays in PendingNodes — engine loop keeps waiting
     Note over C: Client reads task_id from event
@@ -55,6 +56,18 @@ sequenceDiagram
 
     Note over OR,C: Graph advances normally from the review node's outgoing edge
 ```
+
+---
+
+## Event Publishing
+
+The agent worker publishes `HumanReviewRequested` **directly to Redis Pub/Sub in real-time** — before returning `NodeResult`. The client receives the event immediately when the human review task is created, without waiting for the orchestrator's `handleResult` loop.
+
+The orchestrator's `handleResult` then:
+1. Persists the event to `run_events` (for the reconnect/replay path)
+2. Detects `HumanReviewRequested` and updates the run state/status to `waiting_for_human`
+
+This means the event reaches the client ~1 DB round-trip sooner than the old approach where the orchestrator published after receiving `NodeResult`.
 
 ---
 

@@ -30,6 +30,7 @@ Each flow is written as a numbered step sequence. DB operations are noted where 
 22. [Feature Management (Platform Admin)](#22-feature-management-platform-admin)
 23. [Entitlement Management (Platform Admin)](#23-entitlement-management-platform-admin)
 24. [How Effective Permissions Are Computed](#24-how-effective-permissions-are-computed)
+25. [Platform Admin — Cross-Tenant Roles & Permissions](#25-platform-admin--cross-tenant-roles--permissions)
 
 ---
 
@@ -401,21 +402,21 @@ IAM Service:
 ## 11. Invite User to Tenant
 
 **Endpoint:** `POST /tenants/{tenantId}/members`  
-**Auth:** Bearer access token — caller must be an active member (any role)  
+**Auth:** Bearer access token — caller must be `tenant_admin`  
 **Body:** `{ email, roleKey }`
 
 ```
 IAM Service:
-  1. requireActiveMembership(inviterId, tenantId)
+  1. requireTenantAdmin(inviterId, tenantId)
   2. Find target user by email → 404 if not found (must sign up first)
   3. Check target not already an active member → 409 if duplicate
   4. Validate roleKey:
-     - Load role by key
+     - Load role by key from roles visible to tenant
      - Reject if scope_type = 'platform' → 403
      - Reject if scope_type ≠ 'tenant'   → 400
   5. INSERT memberships (targetUserId, tenantId, status=active)
   6. INSERT membership_roles (membershipId, roleId)
-  7. Return TenantMemberDto { membershipId, userId, email, name, roles }
+  7. Return TenantMemberDto { membershipId, userId, email, name, joinedAt, roles }
 ```
 
 **Guard on role scope:** Platform roles (`platform_admin`) can never be assigned through the member invite flow.
@@ -425,11 +426,11 @@ IAM Service:
 ## 12. Remove Member from Tenant
 
 **Endpoint:** `DELETE /tenants/{tenantId}/members/{userId}`  
-**Auth:** Bearer access token — caller must be an active member
+**Auth:** Bearer access token — caller must be `tenant_admin`
 
 ```
 IAM Service:
-  1. requireActiveMembership(removerId, tenantId)
+  1. requireTenantAdmin(removerId, tenantId)
   2. Find target membership (userId, tenantId, status=active) → 404 if not found
   3. For each workspace_membership of this membership:
      a. DELETE workspace_membership_roles (all role assignments in that workspace)
@@ -445,24 +446,24 @@ IAM Service:
 ## 13. Invite User to Workspace
 
 **Endpoint:** `POST /tenants/{tenantId}/workspaces/{workspaceId}/members`  
-**Auth:** Bearer access token — caller must be an active tenant member  
+**Auth:** Bearer access token — caller must be `tenant_admin`  
 **Body:** `{ email, roleKey }`
 
 ```
 IAM Service:
-  1. requireActiveMembership(inviterId, tenantId)
+  1. requireTenantAdmin(inviterId, tenantId)
   2. Verify workspaceId belongs to tenantId → 404 if not
   3. Find target user by email → 404 if not found
   4. Find target's active tenant membership → 404 if not a tenant member
      (prerequisite: invite to tenant first)
   5. Check target not already an active workspace member → 409
   6. Validate roleKey:
-     - Load role by key
+     - Load role by key from roles visible to tenant
      - Reject if scope_type = 'platform' → 403
      - Reject if scope_type ≠ 'workspace' → 400
   7. INSERT workspace_memberships (idempotent — skips if already exists)
   8. INSERT workspace_membership_roles (workspaceMembershipId, roleId)
-  9. Return WorkspaceMemberDto
+  9. Return WorkspaceMemberDto { workspaceMembershipId, userId, email, name, joinedAt, roles }
 ```
 
 ---
@@ -470,11 +471,11 @@ IAM Service:
 ## 14. Remove Member from Workspace
 
 **Endpoint:** `DELETE /tenants/{tenantId}/workspaces/{workspaceId}/members/{userId}`  
-**Auth:** Bearer access token — caller must be an active tenant member
+**Auth:** Bearer access token — caller must be `tenant_admin`
 
 ```
 IAM Service:
-  1. requireActiveMembership(removerId, tenantId)
+  1. requireTenantAdmin(removerId, tenantId)
   2. Verify workspaceId belongs to tenantId
   3. Find target tenant membership → 404
   4. Find target workspace_membership (membershipId, workspaceId, status=active) → 404
@@ -494,7 +495,7 @@ IAM Service:
 
 ```
 IAM Service:
-  1. requireActiveMembership(assignerId, tenantId)
+  1. requireTenantAdmin(assignerId, tenantId)
   2. Find target membership → 404
   3. Validate roleKey (scope must be 'tenant', not 'platform')
   4. Check not already assigned → 409
@@ -507,7 +508,7 @@ IAM Service:
 
 ```
 IAM Service:
-  1. requireActiveMembership(revokerId, tenantId)
+  1. requireTenantAdmin(revokerId, tenantId)
   2. Find target membership → 404
   3. Validate roleKey (must be tenant-scoped)
   4. Check is assigned → 404 if not
@@ -525,7 +526,7 @@ IAM Service:
 
 ```
 IAM Service:
-  1. requireActiveMembership(assignerId, tenantId)
+  1. requireTenantAdmin(assignerId, tenantId)
   2. Verify workspace belongs to tenant
   3. Find target tenant membership → 404
   4. Find target workspace_membership → 404
@@ -539,7 +540,7 @@ IAM Service:
 **Endpoint:** `DELETE /tenants/{tenantId}/workspaces/{workspaceId}/members/{targetUserId}/roles/{roleKey}`
 
 ```
-Same guards as assign, then:
+Same guards as assign (`tenant_admin`, workspace belongs to tenant, target membership exists, target workspace membership exists, workspace-scoped role), then:
   DELETE workspace_membership_roles (workspaceMembershipId, roleId)
 ```
 
@@ -558,7 +559,7 @@ Same guards as assign, then:
 ```
 IAM Service:
   1. requireTenantAdmin(userId, tenantId)
-  2. Check key uniqueness within tenant → 409 if taken
+  2. Check key uniqueness against platform-visible and tenant-owned roles → 409 if taken
   3. Clamp scopeType: only 'tenant' or 'workspace' allowed
      (any other value → defaults to 'workspace')
   4. INSERT roles (tenantId, key, name, scopeType, description, is_system=false)
@@ -981,3 +982,80 @@ GET /permissions/me
 → returns { permissions: ["agent:read", ...] }
 → 0 DB queries
 ```
+
+---
+
+## 25. Platform Admin — Cross-Tenant Roles & Permissions
+
+**Endpoints:**
+- `GET /platform/tenants/{tenantId}/roles`
+- `GET /platform/tenants/{tenantId}/permissions`
+
+**Auth:** Bearer access token — caller must have a role with `scope_type = 'platform'` (i.e. `platform_admin`).  
+**Purpose:** Read-only inspection of any tenant's role and permission configuration without being a member of that tenant.
+
+### GET /platform/tenants/{tenantId}/roles
+
+```
+Client                          IAM Service                     DB
+  |                                  |                           |
+  |-- GET /platform/tenants/         |                           |
+  |       {tenantId}/roles --------->|                           |
+  |                                  |-- requirePlatformAdmin:   |
+  |                                  |   load all memberships    |
+  |                                  |   for userId ------------>|
+  |                                  |<-- memberships -----------|
+  |                                  |   load membership_roles ->|
+  |                                  |<-- role IDs --------------|
+  |                                  |   load roles by IDs ------>|
+  |                                  |<-- roles -----------------|
+  |                                  |   any with scope_type     |
+  |                                  |   = 'platform'? or 403    |
+  |                                  |                           |
+  |                                  |-- roleRepo.               |
+  |                                  |   findVisibleToTenant     |
+  |                                  |   (tenantId) ------------>|
+  |                                  |<-- [platform roles        |
+  |                                  |    + tenant custom roles]-|
+  |                                  |                           |
+  |<-- 200 [RoleDto, ...] -----------|
+```
+
+Returns: system roles (`tenant_id IS NULL`) + any custom roles the tenant has created.
+
+### GET /platform/tenants/{tenantId}/permissions
+
+```
+Client                          IAM Service                     DB
+  |                                  |                           |
+  |-- GET /platform/tenants/         |                           |
+  |       {tenantId}/permissions --->|                           |
+  |                                  |-- requirePlatformAdmin    |
+  |                                  |   (same check as above)   |
+  |                                  |                           |
+  |                                  |-- permissionRepo.         |
+  |                                  |   findVisibleToTenant     |
+  |                                  |   (tenantId) ------------>|
+  |                                  |<-- [platform permissions  |
+  |                                  |    + tenant custom ones]--|
+  |                                  |                           |
+  |<-- 200 [PermissionDto, ...] -----|
+```
+
+Returns: system permissions (`tenant_id IS NULL`) + any custom permissions the tenant has created.
+
+### Tenant Listing — Platform Anchor Excluded
+
+`GET /platform/tenants` also runs a post-query filter:
+
+```
+IAM Service:
+  1. requirePlatformAdmin(userId)
+  2. tenantRepo.findByStatus('active')         — finds all active tenants including the internal anchor
+  3. filter out plan_key = 'platform'          — removes the platform tenant itself
+  4. Return list of real customer tenants
+```
+
+This prevents the internal `platform` anchor tenant (seeded by migration V7, housing the admin account)
+from appearing in admin UIs. Customer-created tenants always have `plan_key = 'basic'` or another
+custom key, never `'platform'`.
