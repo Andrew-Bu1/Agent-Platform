@@ -49,13 +49,13 @@ Create a new thread.
 ```json
 {
   "id": "uuid",
-  "tenant_id": "uuid",
-  "workspace_id": "uuid",
-  "user_id": "uuid (from JWT sub, nullable)",
+  "tenantId": "uuid",
+  "workspaceId": "uuid",
+  "userId": "uuid (from JWT sub, nullable)",
   "title": "string",
   "metadata": {},
-  "created_at": "RFC3339",
-  "updated_at": "RFC3339"
+  "createdAt": "RFC3339",
+  "updatedAt": "RFC3339"
 }
 ```
 

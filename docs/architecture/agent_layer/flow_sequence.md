@@ -24,7 +24,7 @@ sequenceDiagram
     OR->>PG: INSERT runs {id, status=pending, input_json, state_json}
     PG-->>OR: run row
 
-    Note over OR: Engine goroutine starts (background)
+    Note over OR: DispatchEntry — sets status=running, pushes entry NodeJob to Redis (no goroutine)
     OR-->>C: HTTP 201 JSON {success:true, data:{id, status:"pending", ...}}
 
     Note over C,OR: Client opens SSE stream
@@ -36,7 +36,7 @@ sequenceDiagram
     OR->>Redis: PUBLISH run:{run_id}:stream → SSEEvent{type:"RunStarted"}
     OR-->>C: event: RunStarted<br/>data: {}
 
-    Note over OR,Redis: Engine dispatches each node to the worker queue
+    Note over OR,Redis: Entry node job is in queue — Dispatcher goroutine picks it up
     OR->>PG: INSERT node_runs {id, node_id, status='running', iteration=1}
     OR->>Redis: RPUSH agent:queue:node → NodeJob{run_id, node_run_id, node_config, input_json}
     OR->>Redis: PUBLISH run:{run_id}:stream → SSEEvent{type:"NodeStarted"}
@@ -56,7 +56,7 @@ sequenceDiagram
     Note over WK: Stream ends — assemble final message, check for tool calls
     WK->>Redis: RPUSH agent:queue:event → NodeResult{run_id, node_run_id, status="completed", output_json}
 
-    OR->>OR: Engine receives NodeResult via Dispatcher
+    Note over OR: Dispatcher.advance — loads run+graph+state from DB, creates short-lived Engine, calls Advance()
     OR->>PG: UPDATE node_runs SET status='completed', output_json=$out
     OR->>Redis: PUBLISH run:{run_id}:stream → SSEEvent{type:"NodeCompleted"}
     OR-->>C: event: NodeCompleted<br/>data: {"node_id":"..."}
@@ -100,6 +100,7 @@ sequenceDiagram
     Redis-->>WK: NodeJob (node-B)
     WK-->>Redis: NodeResult (node-B, completed)
 
+    Note over OR: Dispatcher.advance loads state from DB for each result
     OR-->>C: event: NodeCompleted (node-B)<br/>event: NodeCompleted (end node)<br/>event: RunCompleted
 ```
 
@@ -231,3 +232,28 @@ pending → running → completed
 | `completed` | Engine | All PendingNodes empty |
 | `failed` | Engine | Any unrecoverable error |
 | `cancelled` | API | `POST /runs/{id}/cancel` |
+
+---
+
+## Stateless Dispatcher Design
+
+The orchestrator has **no in-memory per-run state**. There is no goroutine kept alive for the lifetime of a run.
+
+```
+POST /runs
+  → CreateRun: INSERT run → Engine.DispatchEntry() → RPUSH entry NodeJob
+  → return 201 (no goroutine spawned)
+
+[N Dispatcher goroutines — any orchestrator instance]:
+  BLPOP result queue
+  → load run + graph + state from DB (GetByIDOnly)
+  → NewEngine(run, graph, state, repos...)
+  → eng.Advance(ctx, result)       ← pure: mutates state, writes to DB, dispatches next jobs
+  → discard engine (GC)
+```
+
+**Consequences:**
+- Orchestrator restarts are transparent — active runs resume automatically when the next `NodeResult` arrives on the queue.
+- Multiple orchestrator replicas can process different run results simultaneously with no coordination.
+- `RunState` in `runs.state_json` (Postgres JSONB) is the single source of truth; it is updated on every state mutation.
+- `ResumeHumanReview` pushes a synthetic `NodeResult` directly onto the result queue instead of routing to an in-memory engine.

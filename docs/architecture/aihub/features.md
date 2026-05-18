@@ -131,11 +131,16 @@ Returns 409 if usage logs reference this model (FK constraint).
 {
   "model": "claude-3-5-sonnet",
   "messages": [
+    {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello!"}
   ],
   "stream": false,
   "tools": [...],
-  "tool_choice": "auto"
+  "tool_choice": "auto",
+  "temperature": 0.7,
+  "top_p": 0.9,
+  "top_k": 50,
+  "max_tokens": 1024
 }
 ```
 
@@ -143,6 +148,17 @@ Returns 409 if usage logs reference this model (FK constraint).
 - `tools` and `tool_choice` are forwarded to the provider as-is (OpenAI tool format).
 - `stream: true` returns an SSE stream (`text/event-stream`) in the OpenAI SSE format.
 - If the model config has `supports_streaming: false`, streaming requests will be rejected by the provider (not enforced at the AIHub layer).
+
+**Generation parameters** (all optional — omit to use the provider/model default):
+
+| Field | Type | Description |
+|---|---|---|
+| `temperature` | float 0–2 | Sampling temperature. Lower = more deterministic, higher = more creative. |
+| `top_p` | float 0–1 | Nucleus sampling probability mass. Only tokens in the top-p cumulative probability are considered. |
+| `top_k` | int ≥ 1 | Limit sampling to the top K most likely tokens per step. Not supported by all providers — ignored if unsupported. |
+| `max_tokens` | int ≥ 1 | Hard cap on the number of tokens in the reply. |
+
+All four params are forwarded verbatim to the provider payload when present. When omitted (`null` or absent from the request), the field is not sent to the provider, which then applies its own model default.
 
 **Non-streaming response** follows the OpenAI ChatCompletion format.
 

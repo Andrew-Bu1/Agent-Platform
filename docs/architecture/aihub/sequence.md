@@ -76,11 +76,11 @@ sequenceDiagram
     participant Prov as Provider API<br/>(e.g. OpenRouter)
     participant Log as PostgreSQL<br/>model_usage_logs
 
-    C->>API: POST /v1/chat {model, messages, stream:false}
+    C->>API: POST /v1/chat {model, messages, stream:false, temperature?, top_p?, top_k?, max_tokens?}
     API->>Auth: verify JWT → CallerContext
     Auth-->>API: CallerContext {tenant_id, ...}
 
-    API->>SR: chat(model_key, messages, ctx)
+    API->>SR: chat(model_key, messages, ctx, temperature?, top_p?, top_k?, max_tokens?)
     SR->>PG: SELECT mc.*, p.provider_key FROM model_configs mc JOIN providers p WHERE model_key=$1
     PG-->>SR: ModelConfig
 
@@ -91,8 +91,9 @@ sequenceDiagram
     EG->>Redis: GET tpm/daily/monthly counters
     EG-->>SR: ok (or 403/429)
 
-    SR->>Adp: chat(config, messages, tools, tool_choice)
-    Adp->>Prov: POST /chat/completions {model: provider_model_id, messages, ...}
+    SR->>Adp: chat(config, messages, tools, tool_choice, temperature?, top_p?, top_k?, max_tokens?)
+    Note over Adp: Only non-null params are added to the provider payload
+    Adp->>Prov: POST /chat/completions {model: provider_model_id, messages, temperature?, ...}
     Prov-->>Adp: ChatCompletion {id, choices, usage}
     Adp-->>SR: ChatResponse
 
@@ -120,13 +121,13 @@ sequenceDiagram
     participant Prov as Provider API
     participant Log as PostgreSQL<br/>model_usage_logs
 
-    C->>API: POST /v1/chat {model, messages, stream:true}
-    API->>SR: chat_stream(model_key, messages, ctx)
+    C->>API: POST /v1/chat {model, messages, stream:true, temperature?, top_p?, top_k?, max_tokens?}
+    API->>SR: chat_stream(model_key, messages, ctx, temperature?, top_p?, top_k?, max_tokens?)
     SR->>EG: check_before_call (same as non-streaming)
     EG-->>SR: ok
 
-    SR->>Adp: chat_stream(config, messages)
-    Adp->>Prov: POST /chat/completions {stream:true, stream_options:{include_usage:true}}
+    SR->>Adp: chat_stream(config, messages, temperature?, top_p?, top_k?, max_tokens?)
+    Adp->>Prov: POST /chat/completions {stream:true, stream_options:{include_usage:true}, temperature?, ...}
 
     loop SSE chunks
         Prov-->>Adp: data: {delta: ...}

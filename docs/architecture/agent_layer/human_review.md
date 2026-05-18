@@ -33,7 +33,7 @@ sequenceDiagram
     OR->>PG: UPDATE runs SET state_json={HumanWait:{node_id, node_run_id, task_id}}, updated_at=NOW()
     OR->>PG: UPDATE runs SET status="waiting_for_human", finished_at=NULL
 
-    Note over OR: Node stays in PendingNodes — engine loop keeps waiting
+    Note over OR: Advance() returns — no goroutine is kept alive
     Note over C: Client reads task_id from event
 
     UI->>PG: SELECT human_review_tasks WHERE id=$task_id (fetch payload for display)
@@ -46,10 +46,10 @@ sequenceDiagram
     OR->>OR: Parse state_json → validate HumanWait.TaskID matches
     OR->>PG: UPDATE runs SET state_json={HumanWait:null}
     OR->>PG: UPDATE runs SET status="running"
-    OR->>OR: Dispatcher.Resume(runID, NodeResult{node_id, node_run_id, status="completed", output})
+    OR->>Redis: RPUSH agent:queue:event → NodeResult{node_id, node_run_id, status="completed", output}
 
-    OR->>OR: Engine receives injected NodeResult
-    Note over OR: handleResult — no HumanReviewRequested event this time → normal flow
+    Note over OR: Dispatcher picks up NodeResult from queue (any instance)
+    OR->>OR: Advance() — loads run+graph+state from DB, no HumanReviewRequested event → normal flow
     OR->>PG: UPDATE node_runs SET status="completed", output_json=$decision
     OR->>Redis: PUBLISH run:{run_id}:stream → SSEEvent{type:"NodeCompleted"}
     OR-->>C: event: NodeCompleted<br/>data: {"node_id":"review-node"}
@@ -104,14 +104,13 @@ If any check fails, a `400/500` JSON error is returned (not SSE).
 
 ---
 
-## What Happens if the Engine Restarts?
+## What Happens if the Orchestrator Restarts?
 
-The engine goroutine is in-memory only. If the orchestrator process restarts while a run is `waiting_for_human`:
+Because the orchestrator is fully stateless (no in-memory engine goroutines), a restart has **no impact** on runs that are `waiting_for_human`:
 
-- The `runs` row still has `status=waiting_for_human` and the `HumanWait` state in `state_json`
-- `POST /runs/{id}/resume` will succeed at the DB level but `Dispatcher.Resume` will return `false` (engine not found)
-- The API returns a 500 with message "engine not active for run — it may have been restarted"
-- **Recovery**: a restart recovery mechanism is needed (re-hydrate engine from DB state). This is tracked as a known limitation.
+- The `runs` row retains `status=waiting_for_human` and the full `HumanWait` state in `state_json`.
+- When `POST /runs/{id}/resume` is called after a restart, it reads from DB, validates, clears `HumanWait`, and pushes the `NodeResult` onto the Redis queue.
+- The Dispatcher (on whichever instance is running) picks it up and processes it normally.
 
 ---
 

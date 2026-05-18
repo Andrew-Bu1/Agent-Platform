@@ -82,6 +82,23 @@ Paginated responses:
 
 ---
 
+## Field Naming Conventions
+
+All API responses follow a consistent naming strategy based on service boundary:
+
+| Layer | Convention | Example |
+|---|---|---|
+| Go backend HTTP responses (`RunResponse`, `ThreadResponse`, etc.) | **camelCase** | `flowVersionId`, `tenantId`, `createdAt` |
+| Go backend DB models (internal only) | snake_case | `flow_version_id`, `tenant_id` |
+| DataHub / data-worker responses (Go) | snake_case | `chunk_strategy`, `document_id` |
+| Frontend TypeScript interfaces | match what the backend sends | `Run` → camelCase; `NodeRun` → snake_case |
+
+The BFF (agent-studio Java) proxies responses as-is without field transformation. Orchestrator responses (threads, runs, node-runs) are already camelCase in Go JSON tags and the frontend types match. DataHub responses remain snake_case and the frontend `Datasource`, `Document`, `Ingestion`, `NodeRun` types match.
+
+> The BFF unwraps the orchestrator's `{success, data}` envelope before re-wrapping into its own `ApiResponse<T>`. Do **not** double-unwrap in the frontend — read `response.data` once.
+
+---
+
 ## API Sections
 
 ### Agents (`/api/v1/agents`)
