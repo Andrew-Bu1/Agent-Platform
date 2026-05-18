@@ -24,7 +24,11 @@ func NewRecursiveSplitChunker(cfg RecursiveSplitConfig) *RecursiveSplitChunker {
 }
 
 func (c *RecursiveSplitChunker) Chunk(text string) ([]Chunk, error) {
-	atoms := c.splitRecursive(strings.TrimSpace(text), c.cfg.Separators)
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, nil
+	}
+	atoms := c.splitRecursive(text, c.cfg.Separators)
 	merged := c.mergePieces(atoms)
 
 	chunks := make([]Chunk, len(merged))

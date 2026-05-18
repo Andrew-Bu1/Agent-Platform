@@ -17,7 +17,11 @@ var (
 	ErrUnsupportedDimension = errors.New("unsupported vector dimension")
 )
 
-const defaultTopK = 10
+// DefaultTopK is the fallback result count when the caller does not specify top_k.
+const DefaultTopK = 10
+
+// defaultTopK alias kept for internal use.
+const defaultTopK = DefaultTopK
 
 type SearchService struct {
 	repo           *repository.SearchRepository
