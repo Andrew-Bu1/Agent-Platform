@@ -1,5 +1,7 @@
 package com.agentplatform.common.security;
 
+import com.agentplatform.common.exception.ForbiddenException;
+
 import java.util.List;
 
 /**
@@ -48,6 +50,16 @@ public record AuthContext(
     /** Returns true if this context carries the given permission key. */
     public boolean hasPermission(String permission) {
         return permissions.contains(permission);
+    }
+
+    /**
+     * Throws {@link ForbiddenException} if this context does not carry the given permission key.
+     * Use for feature gates and RBAC checks in controller methods.
+     */
+    public void requirePermission(String permission) {
+        if (!hasPermission(permission)) {
+            throw new ForbiddenException("Permission required: " + permission);
+        }
     }
 
     /** True when this token belongs to a human user (not a service client). */

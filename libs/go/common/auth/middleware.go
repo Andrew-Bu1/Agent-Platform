@@ -27,6 +27,7 @@ const (
 	workspaceIDKey contextKey = "workspace_id"
 	subjectKey     contextKey = "subject"
 	callerTypeKey  contextKey = "caller_type"
+	permissionsKey contextKey = "permissions"
 )
 
 // Options configures the IAM JWT middleware.
@@ -130,6 +131,7 @@ func NewMiddleware(next http.Handler, opts Options, exemptPaths ...string) http.
 		ctx = context.WithValue(ctx, workspaceIDKey, workspaceID)
 		ctx = context.WithValue(ctx, subjectKey, stringClaim(claims, "sub"))
 		ctx = context.WithValue(ctx, callerTypeKey, callerType)
+		ctx = context.WithValue(ctx, permissionsKey, stringSliceClaim(claims, "permissions"))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -497,4 +499,42 @@ func Subject(ctx context.Context) string {
 		return ""
 	}
 	return v.(string)
+}
+
+// Permissions returns the list of permission/feature keys embedded in the JWT.
+func Permissions(ctx context.Context) []string {
+	v := ctx.Value(permissionsKey)
+	if v == nil {
+		return nil
+	}
+	return v.([]string)
+}
+
+// HasPermission returns true when the JWT carried the given permission key.
+func HasPermission(ctx context.Context, key string) bool {
+	for _, p := range Permissions(ctx) {
+		if p == key {
+			return true
+		}
+	}
+	return false
+}
+
+// stringSliceClaim extracts a string slice from a JWT claim.
+func stringSliceClaim(claims map[string]any, name string) []string {
+	raw, ok := claims[name]
+	if !ok || raw == nil {
+		return nil
+	}
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
