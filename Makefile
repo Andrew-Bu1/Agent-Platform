@@ -26,7 +26,7 @@ env: ## Copy .env.example → .env for services that have no .env yet
 # ─────────────────────────────────────────────────────────────────────────────
 # Infrastructure (Docker Compose — Postgres, Redis, MinIO)
 # ─────────────────────────────────────────────────────────────────────────────
-.PHONY: up down restart logs ps
+.PHONY: up down restart logs ps rebuild-iam health-iam
 up: ## Start infrastructure containers
 	$(COMPOSE) up -d
 
@@ -41,24 +41,20 @@ logs: ## Follow infrastructure logs  (Ctrl-C to exit)
 ps: ## Show running containers
 	$(COMPOSE) ps
 
+rebuild-iam: ## Rebuild and recreate IAM service so actuator changes are in the running container
+	$(COMPOSE) up -d --build --force-recreate iam-service
+
+health-iam: ## Print IAM container health endpoint response
+	$(COMPOSE) exec iam-service wget -qO- http://localhost:8080/actuator/health
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Database migrations  (run 'make up' first)
 # ─────────────────────────────────────────────────────────────────────────────
 .PHONY: migrate
-migrate: ## Apply all Postgres migrations
+migrate: ## Apply Postgres migrations for aihub and datahub (iam-service and agent-studio use Flyway on startup)
 	@echo "→ Creating databases..."
 	@PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres \
 	  -f migrations/postgres/init.sql
-	@echo "→ iam-service migrations..."
-	@for f in $$(ls migrations/postgres/iam-service/*.sql | sort); do \
-	  echo "  $$f"; \
-	  PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d iam -f "$$f"; \
-	done
-	@echo "→ agent-studio migrations..."
-	@for f in $$(ls migrations/postgres/agent-studio/*.sql 2>/dev/null | sort); do \
-	  echo "  $$f"; \
-	  PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d agent_studio -f "$$f"; \
-	done
 	@echo "→ aihub migrations..."
 	@for f in $$(ls migrations/postgres/aihub/*.sql | sort); do \
 	  echo "  $$f"; \
@@ -69,7 +65,7 @@ migrate: ## Apply all Postgres migrations
 	  echo "  $$f"; \
 	  PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d datahub -f "$$f"; \
 	done
-	@echo "✓ All migrations applied."
+	@echo "✓ Migrations applied. iam-service and agent-studio schemas are managed by Flyway (applied on service start)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Build

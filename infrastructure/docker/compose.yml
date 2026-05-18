@@ -1,9 +1,3 @@
-# Build all services from the repo root:
-#   docker compose -f infrastructure/docker/compose.yml build
-#   docker compose -f infrastructure/docker/compose.yml up -d
-# Or via Makefile:
-#   make up
-
 x-logging: &default-logging
   driver: "json-file"
   options:
@@ -11,7 +5,6 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
-
   # ── Infrastructure ──────────────────────────────────────────────────────────
 
   postgres:
@@ -20,16 +13,12 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: agent_studio       # default db; init.sql creates the rest
+      POSTGRES_DB: postgres
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../../migrations/postgres/init.sql:/docker-entrypoint-initdb.d/00_init.sql
-      - ../../migrations/postgres/iam-service:/docker-entrypoint-initdb.d/iam
-      - ../../migrations/postgres/agent-studio:/docker-entrypoint-initdb.d/agent-studio
-      - ../../migrations/postgres/aihub:/docker-entrypoint-initdb.d/aihub
-      - ../../migrations/postgres/datahub:/docker-entrypoint-initdb.d/datahub
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -40,6 +29,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: agent-platform-redis
+    # Note: Redis usually uses an ACL file, but we can load general envs here too
     command: redis-server --aclfile /usr/local/etc/redis/users.acl --appendonly yes
     volumes:
       - redis_data:/data
@@ -62,7 +52,7 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
       - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"    # MinIO console
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -81,15 +71,17 @@ services:
     container_name: agent-platform-iam
     env_file:
       - ../../services/iam-service/.env
-    environment:
-      # Override host/port so the service talks to the compose postgres
-      DB_HOST: postgres
-      DB_PORT: 5432
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
     restart: unless-stopped
     logging: *default-logging
 
@@ -100,13 +92,6 @@ services:
     container_name: agent-platform-aihub
     env_file:
       - ../../services/aihub/.env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      MINIO_ENDPOINT: minio:9000
-      IAM_BASE_URL: http://iam-service:8080
     volumes:
       - model_cache:/app/services/aihub/.models
     ports:
@@ -119,7 +104,7 @@ services:
       minio:
         condition: service_healthy
       iam-service:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     logging: *default-logging
 
@@ -130,13 +115,6 @@ services:
     container_name: agent-platform-datahub
     env_file:
       - ../../services/datahub/.env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      MINIO_ENDPOINT: minio:9000
-      IAM_URL: http://iam-service:8080
     ports:
       - "127.0.0.1:8084:8080"
     depends_on:
@@ -147,7 +125,7 @@ services:
       minio:
         condition: service_healthy
       iam-service:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     logging: *default-logging
 
@@ -158,14 +136,6 @@ services:
     container_name: agent-platform-data-worker
     env_file:
       - ../../services/data-worker/.env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      MINIO_ENDPOINT: minio:9000
-      AIHUB_URL: http://aihub:8000
-      IAM_URL: http://iam-service:8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -176,7 +146,7 @@ services:
       aihub:
         condition: service_started
       iam-service:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     logging: *default-logging
 
@@ -187,20 +157,13 @@ services:
     container_name: agent-platform-agent-studio
     env_file:
       - ../../services/agent-studio/.env
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      IAM_URL: http://iam-service:8080
-      AIHUB_URL: http://aihub:8000
-      DATAHUB_URL: http://datahub:8080
-      ORCHESTRATOR_URL: http://agent-orchestrator:8081
     ports:
       - "127.0.0.1:8082:8082"
     depends_on:
       postgres:
         condition: service_healthy
       iam-service:
-        condition: service_started
+        condition: service_healthy
       aihub:
         condition: service_started
       datahub:
@@ -217,12 +180,6 @@ services:
     container_name: agent-platform-agent-orchestrator
     env_file:
       - ../../services/agent-orchestrator/.env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      IAM_URL: http://iam-service:8080
     ports:
       - "127.0.0.1:8081:8081"
     depends_on:
@@ -231,7 +188,7 @@ services:
       redis:
         condition: service_healthy
       iam-service:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     logging: *default-logging
 
@@ -242,13 +199,6 @@ services:
     container_name: agent-platform-agent-worker
     env_file:
       - ../../services/agent-worker/.env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      AIHUB_URL: http://aihub:8000
-      IAM_URL: http://iam-service:8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -261,17 +211,19 @@ services:
     restart: unless-stopped
     logging: *default-logging
 
-  agent-studio-web:
-    build:
-      context: ../../services/agent-studio-web
-      dockerfile: Dockerfile
-    container_name: agent-platform-web
-    ports:
-      - "127.0.0.1:3000:80"
-    depends_on:
-      - agent-studio
-    restart: unless-stopped
-    logging: *default-logging
+  # agent-studio-web:
+  #   build:
+  #     context: ../../services/agent-studio-web
+  #     dockerfile: Dockerfile
+  #   container_name: agent-platform-web
+  #   env_file:
+  #     - ../../services/agent-studio-web/.env
+  #   ports:
+  #     - "127.0.0.1:3000:80"
+  #   depends_on:
+  #     - agent-studio
+  #   restart: unless-stopped
+  #   logging: *default-logging
 
 volumes:
   postgres_data:
