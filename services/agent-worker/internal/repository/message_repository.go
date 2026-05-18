@@ -21,7 +21,8 @@ func NewMessageRepository(pool *pgxpool.Pool) *MessageRepository {
 // limit <= 0 means no limit (returns all).
 func (r *MessageRepository) GetByThreadID(ctx context.Context, threadID, tenantID, workspaceID uuid.UUID, limit int) ([]*model.Message, error) {
 	q := `
-		SELECT id, tenant_id, workspace_id, thread_id, run_id, role, content_json, created_at
+		SELECT id, tenant_id, workspace_id, thread_id, run_id, node_run_id,
+		       role, content_json, metadata_json, created_at
 		FROM messages
 		WHERE thread_id = $1
 		  AND tenant_id = $2
@@ -45,8 +46,8 @@ func (r *MessageRepository) GetByThreadID(ctx context.Context, threadID, tenantI
 		var m model.Message
 		if err := rows.Scan(
 			&m.ID, &m.TenantID, &m.WorkspaceID,
-			&m.ThreadID, &m.RunID, &m.Role,
-			&m.ContentJSON, &m.CreatedAt,
+			&m.ThreadID, &m.RunID, &m.NodeRunID,
+			&m.Role, &m.ContentJSON, &m.MetadataJSON, &m.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
@@ -59,13 +60,14 @@ func (r *MessageRepository) GetByThreadID(ctx context.Context, threadID, tenantI
 func (r *MessageRepository) Insert(ctx context.Context, m *model.Message) error {
 	const q = `
 		INSERT INTO messages
-		  (id, tenant_id, workspace_id, thread_id, run_id, role, content_json, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		  (id, tenant_id, workspace_id, thread_id, run_id, node_run_id,
+		   role, content_json, metadata_json, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	_, err := r.pool.Exec(ctx, q,
 		m.ID, m.TenantID, m.WorkspaceID,
-		m.ThreadID, m.RunID, m.Role,
-		m.ContentJSON, m.CreatedAt,
+		m.ThreadID, m.RunID, m.NodeRunID,
+		m.Role, m.ContentJSON, m.MetadataJSON, m.CreatedAt,
 	)
 	return err
 }

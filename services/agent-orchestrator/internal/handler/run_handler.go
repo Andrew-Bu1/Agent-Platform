@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"strconv"
 
+	"libs/go/common/auth"
+
 	"github.com/Andrew-Bu1/Agent-Platform/services/agent-orchestrator/internal/model"
 	"github.com/Andrew-Bu1/Agent-Platform/services/agent-orchestrator/internal/service"
 	"github.com/google/uuid"
-	"libs/go/common/auth"
 )
 
 type RunHandler struct {
@@ -21,22 +22,21 @@ func NewRunHandler(svc *service.RunService) *RunHandler {
 }
 
 func (h *RunHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /runs", h.List)
 	mux.HandleFunc("POST /runs", h.Create)
+	mux.HandleFunc("GET /runs/pending-review", h.ListPendingReview)
 	mux.HandleFunc("GET /runs/{id}", h.GetByID)
 	mux.HandleFunc("POST /runs/{id}/cancel", h.Cancel)
 	mux.HandleFunc("GET /runs/{id}/events", h.StreamEvents)
 	mux.HandleFunc("POST /runs/{id}/resume", h.ResumeHumanReview)
+	mux.HandleFunc("GET /runs/{id}/node-runs", h.ListNodeRuns)
 }
 
-// Create starts a new flow run and immediately streams events as SSE.
+// Create creates a new flow run and returns it as JSON.
 // POST /runs  {flow_version_id, thread_id?, input}
 //
-// The response is text/event-stream. Each event has the form:
-//
-//	event: <EventType>
-//	data: <JSON payload>
-//
-// Terminal events are RunCompleted and RunFailed.
+// The engine starts immediately in the background; clients should connect to
+// GET /runs/{id}/events to receive the SSE event stream.
 func (h *RunHandler) Create(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
@@ -51,39 +51,13 @@ func (h *RunHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create run + subscribe before committing to SSE headers so errors can return JSON.
-	run, eventCh, err := h.svc.CreateAndStream(r.Context(), req, tenantID, workspaceID)
+	run, err := h.svc.CreateRun(r.Context(), req, tenantID, workspaceID)
 	if err != nil {
 		writeInternalError(w, "failed to create run", err)
 		return
 	}
 
-	setSSSEHeaders(w)
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		return
-	}
-
-	// Send initial event with run ID so the client can reconnect if needed.
-	runData, _ := json.Marshal(map[string]string{
-		"run_id": run.ID.String(),
-		"status": run.Status,
-	})
-	fmt.Fprintf(w, "event: RunCreated\ndata: %s\n\n", runData)
-	flusher.Flush()
-
-	for {
-		select {
-		case ev, ok := <-eventCh:
-			if !ok {
-				return
-			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, ev.Data)
-			flusher.Flush()
-		case <-r.Context().Done():
-			return
-		}
-	}
+	writeJSON(w, http.StatusCreated, run)
 }
 
 // GetByID returns the current state of a run.
@@ -203,6 +177,60 @@ func (h *RunHandler) ResumeHumanReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "resumed"})
+}
+
+// List returns a paginated list of runs for the workspace.
+// GET /runs?page=0&size=20
+func (h *RunHandler) List(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	size, _ := strconv.Atoi(r.URL.Query().Get("size"))
+
+	resp, err := h.svc.List(r.Context(), tenantID, workspaceID, page, size)
+	if err != nil {
+		writeInternalError(w, "failed to list runs", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// ListPendingReview returns all runs waiting_for_human in the workspace.
+// GET /runs/pending-review
+func (h *RunHandler) ListPendingReview(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
+	items, err := h.svc.ListPendingReview(r.Context(), tenantID, workspaceID)
+	if err != nil {
+		writeInternalError(w, "failed to list pending review runs", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+// ListNodeRuns returns all node-level execution steps for a run.
+// GET /runs/{id}/node-runs
+func (h *RunHandler) ListNodeRuns(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
+	id, err := parseUUIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid run id")
+		return
+	}
+
+	items, err := h.svc.ListNodeRuns(r.Context(), id, tenantID, workspaceID)
+	if err != nil {
+		writeInternalError(w, "failed to list node runs", err)
+		return
+	}
+	if items == nil {
+		items = []model.NodeRun{}
+	}
+	writeJSON(w, http.StatusOK, items)
 }
 
 func setSSSEHeaders(w http.ResponseWriter) {

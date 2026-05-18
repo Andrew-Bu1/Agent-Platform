@@ -15,9 +15,11 @@ import (
 
 const defaultMaxIterations = 10
 
-// TokenPublisher publishes streaming token events for a run.
-type TokenPublisher interface {
-	PublishToken(ctx context.Context, runID uuid.UUID, payload json.RawMessage) error
+// EventPublisher publishes SSE-envelope events for a run in real-time.
+// Both token deltas and structural events (AgentStarted, ToolCallCompleted, etc.)
+// are sent through this interface so the client sees them as they happen.
+type EventPublisher interface {
+	PublishEvent(ctx context.Context, runID uuid.UUID, payload json.RawMessage) error
 }
 
 // AgentExecutor runs a single agent node using a ReAct loop.
@@ -28,7 +30,7 @@ type AgentExecutor struct {
 	nodeRunRepo *repository.NodeRunRepository
 	toolExec    *ToolExecutor
 	aihub       *aihub.Client
-	tokenPub    TokenPublisher // nil disables token streaming
+	eventPub    EventPublisher // nil disables real-time publishing (tests)
 }
 
 func NewAgentExecutor(
@@ -37,7 +39,7 @@ func NewAgentExecutor(
 	messageRepo *repository.MessageRepository,
 	nodeRunRepo *repository.NodeRunRepository,
 	aihubClient *aihub.Client,
-	tokenPub TokenPublisher,
+	eventPub EventPublisher,
 ) *AgentExecutor {
 	return &AgentExecutor{
 		agentRepo:   agentRepo,
@@ -46,7 +48,7 @@ func NewAgentExecutor(
 		nodeRunRepo: nodeRunRepo,
 		toolExec:    NewToolExecutor(),
 		aihub:       aihubClient,
-		tokenPub:    tokenPub,
+		eventPub:    eventPub,
 	}
 }
 
@@ -60,7 +62,7 @@ func (e *AgentExecutor) Execute(ctx context.Context, job model.NodeJob) (json.Ra
 		}
 	}
 	if nodeCfg.AgentID == uuid.Nil {
-		return nil, nil, fmt.Errorf("node config missing agent_id")
+		return nil, nil, fmt.Errorf("node config missing agentId")
 	}
 
 	agent, err := e.agentRepo.GetByID(ctx, nodeCfg.AgentID, job.TenantID, job.WorkspaceID)
@@ -107,18 +109,17 @@ func (e *AgentExecutor) Execute(ctx context.Context, job model.NodeJob) (json.Ra
 	}
 
 	var events []model.WorkerEvent
-	events = append(events, model.WorkerEvent{
-		EventType:   "AgentStarted",
-		PayloadJSON: json.RawMessage(`{"agent_id":"` + agent.ID.String() + `"}`),
-	})
+
+	agentStartedPayload := json.RawMessage(`{"agent_id":"` + agent.ID.String() + `"}`)
+	events = append(events, model.WorkerEvent{EventType: "AgentStarted", PayloadJSON: agentStartedPayload})
+	e.publishEvent(ctx, job, "AgentStarted", agentStartedPayload)
 
 	_ = e.nodeRunRepo.SetStarted(ctx, job.NodeRunID, time.Now())
 
 	for iter := 0; iter < maxIter; iter++ {
-		events = append(events, model.WorkerEvent{
-			EventType:   "AgentStepStarted",
-			PayloadJSON: json.RawMessage(fmt.Sprintf(`{"iteration":%d}`, iter+1)),
-		})
+		stepStartedPayload := json.RawMessage(fmt.Sprintf(`{"iteration":%d}`, iter+1))
+		events = append(events, model.WorkerEvent{EventType: "AgentStepStarted", PayloadJSON: stepStartedPayload})
+		e.publishEvent(ctx, job, "AgentStepStarted", stepStartedPayload)
 
 		chatReq := aihub.ChatRequest{
 			Model:    agent.ModelID,
@@ -149,9 +150,7 @@ func (e *AgentExecutor) Execute(ctx context.Context, job model.NodeJob) (json.Ra
 			}
 			if delta.Content != "" {
 				contentBuf.WriteString(delta.Content)
-				if e.tokenPub != nil {
-					e.publishToken(ctx, job, delta.Content)
-				}
+				e.publishToken(ctx, job, delta.Content)
 			}
 		}
 
@@ -162,28 +161,30 @@ func (e *AgentExecutor) Execute(ctx context.Context, job model.NodeJob) (json.Ra
 		}
 		messages = append(messages, assistantMsg)
 
-		events = append(events, model.WorkerEvent{
-			EventType:   "AgentStepCompleted",
-			PayloadJSON: json.RawMessage(fmt.Sprintf(`{"iteration":%d,"finish_reason":%q}`, iter+1, finishReason)),
-		})
+		stepDonePayload := json.RawMessage(fmt.Sprintf(`{"iteration":%d,"finish_reason":%q}`, iter+1, finishReason))
+		events = append(events, model.WorkerEvent{EventType: "AgentStepCompleted", PayloadJSON: stepDonePayload})
+		e.publishEvent(ctx, job, "AgentStepCompleted", stepDonePayload)
 
 		if len(assistantMsg.ToolCalls) == 0 {
 			output := e.extractOutput(assistantMsg)
-			events = append(events, model.WorkerEvent{
-				EventType:   "AgentCompleted",
-				PayloadJSON: json.RawMessage(`{}`),
-			})
+			completedPayload := json.RawMessage(`{}`)
+			events = append(events, model.WorkerEvent{EventType: "AgentCompleted", PayloadJSON: completedPayload})
+			e.publishEvent(ctx, job, "AgentCompleted", completedPayload)
 			return output, events, nil
 		}
 
 		for _, tc := range assistantMsg.ToolCalls {
+			startPayload := json.RawMessage(fmt.Sprintf(`{"tool_call_id":%q,"tool":%q}`,
+				tc.ID, tc.Function.Name))
+			events = append(events, model.WorkerEvent{EventType: "ToolCallStarted", PayloadJSON: startPayload})
+			e.publishEvent(ctx, job, "ToolCallStarted", startPayload)
+
 			toolResult, toolErr := e.runToolCall(ctx, tc, toolMap)
 
-			events = append(events, model.WorkerEvent{
-				EventType:   "ToolCallCompleted",
-				PayloadJSON: json.RawMessage(fmt.Sprintf(`{"tool_call_id":%q,"tool":%q,"error":%v}`,
-					tc.ID, tc.Function.Name, toolErr != nil)),
-			})
+			toolPayload := json.RawMessage(fmt.Sprintf(`{"tool_call_id":%q,"tool":%q,"error":%v}`,
+				tc.ID, tc.Function.Name, toolErr != nil))
+			events = append(events, model.WorkerEvent{EventType: "ToolCallCompleted", PayloadJSON: toolPayload})
+			e.publishEvent(ctx, job, "ToolCallCompleted", toolPayload)
 
 			var contentStr string
 			if toolErr != nil {
@@ -204,6 +205,22 @@ func (e *AgentExecutor) Execute(ctx context.Context, job model.NodeJob) (json.Ra
 	return nil, events, fmt.Errorf("agent exceeded max iterations (%d)", maxIter)
 }
 
+// publishEvent wraps payload in an SSEEvent envelope and publishes it in real-time.
+func (e *AgentExecutor) publishEvent(ctx context.Context, job model.NodeJob, eventType string, payload json.RawMessage) {
+	if e.eventPub == nil {
+		return
+	}
+	ev, err := json.Marshal(struct {
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
+	}{eventType, payload})
+	if err != nil {
+		return
+	}
+	_ = e.eventPub.PublishEvent(ctx, job.RunID, ev)
+}
+
+// publishToken publishes a single streaming token delta in real-time.
 func (e *AgentExecutor) publishToken(ctx context.Context, job model.NodeJob, content string) {
 	inner, err := json.Marshal(map[string]string{
 		"content":     content,
@@ -213,11 +230,7 @@ func (e *AgentExecutor) publishToken(ctx context.Context, job model.NodeJob, con
 	if err != nil {
 		return
 	}
-	ev, _ := json.Marshal(struct {
-		Type string          `json:"type"`
-		Data json.RawMessage `json:"data"`
-	}{"token", inner})
-	_ = e.tokenPub.PublishToken(ctx, job.RunID, ev)
+	e.publishEvent(ctx, job, "token", inner)
 }
 
 func (e *AgentExecutor) buildMessages(ctx context.Context, job model.NodeJob, agent *model.Agent) ([]aihub.Message, error) {

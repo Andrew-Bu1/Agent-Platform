@@ -11,21 +11,42 @@ import (
 	"time"
 )
 
-// Client talks to the AIHub service (OpenAI-compatible HTTP API).
-type Client struct {
-	baseURL      string
-	httpClient   *http.Client
-	streamClient *http.Client // no timeout; relies on context cancellation
+// TokenProvider supplies a Bearer token for outbound requests.
+type TokenProvider interface {
+	Token(ctx context.Context) (string, error)
+	Enabled() bool
 }
 
-func NewClient(baseURL string) *Client {
+// Client talks to the AIHub service (OpenAI-compatible HTTP API).
+type Client struct {
+	baseURL       string
+	httpClient    *http.Client
+	streamClient  *http.Client // no timeout; relies on context cancellation
+	tokenProvider TokenProvider
+}
+
+func NewClient(baseURL string, tokenProvider TokenProvider) *Client {
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
-		streamClient: &http.Client{},
+		streamClient:  &http.Client{},
+		tokenProvider: tokenProvider,
 	}
+}
+
+// setAuth attaches an Authorization header when a token provider is configured.
+func (c *Client) setAuth(ctx context.Context, req *http.Request) error {
+	if c.tokenProvider == nil || !c.tokenProvider.Enabled() {
+		return nil
+	}
+	token, err := c.tokenProvider.Token(ctx)
+	if err != nil {
+		return fmt.Errorf("aihub: get auth token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
 }
 
 // ---- Chat completions -------------------------------------------------------
@@ -106,6 +127,9 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if err := c.setAuth(ctx, httpReq); err != nil {
+		return nil, err
+	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -175,6 +199,9 @@ func (c *Client) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
+	if err := c.setAuth(ctx, httpReq); err != nil {
+		return nil, err
+	}
 
 	resp, err := c.streamClient.Do(httpReq)
 	if err != nil {

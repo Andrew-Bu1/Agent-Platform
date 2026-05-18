@@ -114,3 +114,81 @@ func (r *RunRepository) SetStarted(ctx context.Context, id uuid.UUID, startedAt 
 	_, err := r.db.Exec(ctx, q, id, startedAt)
 	return err
 }
+
+func (r *RunRepository) ListByWorkspace(
+	ctx context.Context,
+	tenantID, workspaceID uuid.UUID,
+	offset, limit int,
+) ([]*model.Run, int64, error) {
+	const countQ = `SELECT COUNT(*) FROM runs WHERE tenant_id = $1 AND workspace_id = $2`
+	var total int64
+	if err := r.db.QueryRow(ctx, countQ, tenantID, workspaceID).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("RunRepository.ListByWorkspace count: %w", err)
+	}
+
+	const q = `
+		SELECT id, tenant_id, workspace_id, thread_id,
+		       flow_id, flow_version_id, status,
+		       input_json, state_json, output_json, error_json,
+		       started_at, finished_at, created_at, updated_at
+		FROM runs
+		WHERE tenant_id = $1 AND workspace_id = $2
+		ORDER BY created_at DESC
+		LIMIT $3 OFFSET $4`
+
+	rows, err := r.db.Query(ctx, q, tenantID, workspaceID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("RunRepository.ListByWorkspace: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []*model.Run
+	for rows.Next() {
+		var run model.Run
+		if err := rows.Scan(
+			&run.ID, &run.TenantID, &run.WorkspaceID, &run.ThreadID,
+			&run.FlowID, &run.FlowVersionID, &run.Status,
+			&run.InputJSON, &run.StateJSON, &run.OutputJSON, &run.ErrorJSON,
+			&run.StartedAt, &run.FinishedAt, &run.CreatedAt, &run.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("RunRepository.ListByWorkspace scan: %w", err)
+		}
+		runs = append(runs, &run)
+	}
+	return runs, total, nil
+}
+
+func (r *RunRepository) ListPendingReview(
+	ctx context.Context,
+	tenantID, workspaceID uuid.UUID,
+) ([]*model.Run, error) {
+	const q = `
+		SELECT id, tenant_id, workspace_id, thread_id,
+		       flow_id, flow_version_id, status,
+		       input_json, state_json, output_json, error_json,
+		       started_at, finished_at, created_at, updated_at
+		FROM runs
+		WHERE tenant_id = $1 AND workspace_id = $2 AND status = 'waiting_for_human'
+		ORDER BY created_at ASC`
+
+	rows, err := r.db.Query(ctx, q, tenantID, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("RunRepository.ListPendingReview: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []*model.Run
+	for rows.Next() {
+		var run model.Run
+		if err := rows.Scan(
+			&run.ID, &run.TenantID, &run.WorkspaceID, &run.ThreadID,
+			&run.FlowID, &run.FlowVersionID, &run.Status,
+			&run.InputJSON, &run.StateJSON, &run.OutputJSON, &run.ErrorJSON,
+			&run.StartedAt, &run.FinishedAt, &run.CreatedAt, &run.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("RunRepository.ListPendingReview scan: %w", err)
+		}
+		runs = append(runs, &run)
+	}
+	return runs, nil
+}

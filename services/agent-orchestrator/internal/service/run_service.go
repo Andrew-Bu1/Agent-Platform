@@ -43,19 +43,19 @@ func NewRunService(
 	}
 }
 
-// CreateAndStream creates a new run, starts its engine, and returns an event channel
-// that streams SSEEvents until the run finishes or ctx is cancelled.
-func (s *RunService) CreateAndStream(
+// CreateRun creates a new run and starts its engine asynchronously.
+// The caller should stream events via WatchRun / GET /runs/{id}/events.
+func (s *RunService) CreateRun(
 	ctx context.Context,
 	req model.CreateRunRequest,
 	tenantID, workspaceID uuid.UUID,
-) (*model.Run, <-chan model.SSEEvent, error) {
+) (*model.RunResponse, error) {
 	fv, err := s.flowVersionRepo.GetByID(ctx, req.FlowVersionID, tenantID, workspaceID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("flow version not found: %w", err)
+		return nil, fmt.Errorf("flow version not found: %w", err)
 	}
 	if fv.Status != "published" {
-		return nil, nil, fmt.Errorf("flow version is not published (status: %s)", fv.Status)
+		return nil, fmt.Errorf("flow version is not published (status: %s)", fv.Status)
 	}
 
 	input := req.Input
@@ -81,63 +81,20 @@ func (s *RunService) CreateAndStream(
 		UpdatedAt:     now,
 	}
 	if err := s.runRepo.Insert(ctx, run); err != nil {
-		return nil, nil, fmt.Errorf("insert run: %w", err)
+		return nil, fmt.Errorf("insert run: %w", err)
 	}
 
 	var graph model.Graph
 	if err := json.Unmarshal(fv.GraphJSON, &graph); err != nil {
-		return nil, nil, fmt.Errorf("parse graph_json: %w", err)
+		return nil, fmt.Errorf("parse graph_json: %w", err)
 	}
-
-	// Subscribe before starting the engine so no early events are missed.
-	channel := "run:" + run.ID.String() + ":stream"
-	pubsub := s.q.Subscribe(context.Background(), channel)
+	graph.PopulateNodeIDs()
 
 	eng := engine.NewEngine(run, &graph, initState, s.runRepo, s.nodeRunRepo, s.eventRepo, s.q, s.nodeQueue)
 	s.dispatcher.Register(eng)
 	go eng.Run(context.Background())
 
-	eventCh := make(chan model.SSEEvent, 128)
-
-	go func() {
-		defer close(eventCh)
-		defer pubsub.Close()
-
-		redisCh := pubsub.Channel()
-		var engDone <-chan struct{} = eng.DoneCh()
-		var drainDeadline <-chan time.Time
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg, ok := <-redisCh:
-				if !ok {
-					return
-				}
-				var ev model.SSEEvent
-				if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
-					continue
-				}
-				select {
-				case eventCh <- ev:
-				case <-ctx.Done():
-					return
-				}
-				if isTerminalEvent(ev.Type) {
-					return
-				}
-			case <-engDone:
-				// Engine done; allow 300 ms for in-flight pub/sub messages to arrive.
-				engDone = nil
-				drainDeadline = time.After(300 * time.Millisecond)
-			case <-drainDeadline:
-				return
-			}
-		}
-	}()
-
-	return run, eventCh, nil
+	return toRunResponse(run), nil
 }
 
 // WatchRun subscribes to an existing run's event stream for the reconnect path.
@@ -282,19 +239,82 @@ func (s *RunService) ResumeHumanReview(
 	return nil
 }
 
+// List returns a paginated list of runs for a workspace.
+func (s *RunService) List(
+	ctx context.Context,
+	tenantID, workspaceID uuid.UUID,
+	page, size int,
+) (*model.RunPageResponse, error) {
+	if size <= 0 {
+		size = 20
+	}
+	if page < 0 {
+		page = 0
+	}
+	runs, total, err := s.runRepo.ListByWorkspace(ctx, tenantID, workspaceID, page*size, size)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*model.RunResponse, 0, len(runs))
+	for _, r := range runs {
+		items = append(items, toRunResponse(r))
+	}
+	totalPages := int(total) / size
+	if int(total)%size != 0 {
+		totalPages++
+	}
+	return &model.RunPageResponse{
+		Content:       items,
+		TotalElements: total,
+		TotalPages:    totalPages,
+		Number:        page,
+		Size:          size,
+	}, nil
+}
+
+// ListPendingReview returns all runs waiting_for_human in a workspace.
+func (s *RunService) ListPendingReview(
+	ctx context.Context,
+	tenantID, workspaceID uuid.UUID,
+) ([]*model.RunResponse, error) {
+	runs, err := s.runRepo.ListPendingReview(ctx, tenantID, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*model.RunResponse, 0, len(runs))
+	for _, r := range runs {
+		items = append(items, toRunResponse(r))
+	}
+	return items, nil
+}
+
 func toRunResponse(r *model.Run) *model.RunResponse {
-	return &model.RunResponse{
+	resp := &model.RunResponse{
 		ID:            r.ID,
 		FlowVersionID: r.FlowVersionID,
 		ThreadID:      r.ThreadID,
 		Status:        r.Status,
-		InputJSON:     r.InputJSON,
-		OutputJSON:    r.OutputJSON,
-		ErrorJSON:     r.ErrorJSON,
+		Input:         r.InputJSON,
+		Output:        r.OutputJSON,
+		Error:         r.ErrorJSON,
 		StartedAt:     r.StartedAt,
 		FinishedAt:    r.FinishedAt,
 		CreatedAt:     r.CreatedAt,
+		UpdatedAt:     r.UpdatedAt,
 	}
+	if r.Status == "waiting_for_human" && len(r.StateJSON) > 0 {
+		var state model.RunState
+		if err := json.Unmarshal(r.StateJSON, &state); err == nil && state.HumanWait != nil {
+			taskID := state.HumanWait.TaskID
+			resp.HumanWaitTaskID = &taskID
+		}
+	}
+	return resp
+}
+
+// ListNodeRuns returns all node runs for a given run, ordered by created_at.
+func (s *RunService) ListNodeRuns(ctx context.Context, runID, tenantID, workspaceID uuid.UUID) ([]model.NodeRun, error) {
+	return s.nodeRunRepo.ListByRun(ctx, runID, tenantID, workspaceID)
 }
 
 func isTerminalStatus(s string) bool {

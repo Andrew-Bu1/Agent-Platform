@@ -71,3 +71,37 @@ func (r *NodeRunRepository) SetStarted(ctx context.Context, id uuid.UUID, starte
 	_, err := r.db.Exec(ctx, q, id, startedAt)
 	return err
 }
+
+func (r *NodeRunRepository) ListByRun(ctx context.Context, runID, tenantID, workspaceID uuid.UUID) ([]model.NodeRun, error) {
+	const q = `
+		SELECT id, tenant_id, workspace_id, run_id,
+		       node_id, node_type, node_name, status,
+		       branch_key, iteration, attempt_no,
+		       input_json, output_json, error_json,
+		       started_at, finished_at, created_at
+		FROM node_runs
+		WHERE run_id = $1 AND tenant_id = $2 AND workspace_id = $3
+		ORDER BY created_at ASC`
+
+	rows, err := r.db.Query(ctx, q, runID, tenantID, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("NodeRunRepository.ListByRun: %w", err)
+	}
+	defer rows.Close()
+
+	var items []model.NodeRun
+	for rows.Next() {
+		var nr model.NodeRun
+		if err := rows.Scan(
+			&nr.ID, &nr.TenantID, &nr.WorkspaceID, &nr.RunID,
+			&nr.NodeID, &nr.NodeType, &nr.NodeName, &nr.Status,
+			&nr.BranchKey, &nr.Iteration, &nr.AttemptNo,
+			&nr.InputJSON, &nr.OutputJSON, &nr.ErrorJSON,
+			&nr.StartedAt, &nr.FinishedAt, &nr.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("NodeRunRepository.ListByRun scan: %w", err)
+		}
+		items = append(items, nr)
+	}
+	return items, rows.Err()
+}

@@ -12,16 +12,31 @@ import (
 // ---------------------------------------------------------------------------
 
 type Graph struct {
-	EntryNodeID string      `json:"entry_node_id"`
-	Nodes       []GraphNode `json:"nodes"`
-	Edges       []GraphEdge `json:"edges"`
+	EntryNodeID string                `json:"entry_node_id"`
+	Nodes       map[string]GraphNode  `json:"nodes"`
+	Edges       []GraphEdge           `json:"edges"`
+}
+
+// PopulateNodeIDs copies the map key into each node's ID field after JSON unmarshal.
+func (g *Graph) PopulateNodeIDs() {
+	for id, node := range g.Nodes {
+		node.ID = id
+		g.Nodes[id] = node
+	}
 }
 
 type GraphNode struct {
-	ID     string          `json:"id"`
-	Type   string          `json:"type"` // start, end, agent, agent_team, if_else, router, parallel, aggregator, human_review
-	Name   string          `json:"name"`
-	Config json.RawMessage `json:"config"`
+	ID    string          `json:"-"` // populated from map key by PopulateNodeIDs
+	// Type controls how the engine and worker handle this node.
+	// Supported values: start, end, agent, agent_team, if_else, router, parallel, aggregator, human_review
+	//
+	// agent_team — supervisor-handoff pattern only.
+	// The supervisor agent (agentId) dynamically routes work to member agents at
+	// runtime via LLM reasoning. Deterministic routing belongs on the outer canvas
+	// (router / if_else / edges), not inside agent_team.
+	Type  string          `json:"type"`
+	Label string          `json:"label"`
+	Data  json.RawMessage `json:"data"`
 }
 
 type GraphEdge struct {
@@ -32,7 +47,12 @@ type GraphEdge struct {
 	Label string `json:"label,omitempty"`
 }
 
-// NodeConfig is the typed config for agent/agent_team nodes.
+// NodeAgentConfig is the typed config for agent and agent_team nodes.
+//
+// For agent_team nodes agentId is the supervisor; memberAgentIds lists the
+// member agents. The worker drives the supervisor-handoff loop — the supervisor
+// LLM decides at runtime which member to call next.
+// Deterministic routing (sequential, parallel, loops) belongs on the outer graph.
 type NodeAgentConfig struct {
 	AgentID       uuid.UUID       `json:"agent_id"`
 	AgentSnapshot json.RawMessage `json:"agent_snapshot,omitempty"`
@@ -150,20 +170,30 @@ type FlowVersion struct {
 // ---------------------------------------------------------------------------
 
 type CreateRunRequest struct {
-	FlowVersionID uuid.UUID       `json:"flow_version_id"`
-	ThreadID      *uuid.UUID      `json:"thread_id,omitempty"`
+	FlowVersionID uuid.UUID       `json:"flowVersionId"`
+	ThreadID      *uuid.UUID      `json:"threadId,omitempty"`
 	Input         json.RawMessage `json:"input"`
 }
 
 type RunResponse struct {
-	ID            uuid.UUID       `json:"id"`
-	FlowVersionID uuid.UUID       `json:"flow_version_id"`
-	ThreadID      *uuid.UUID      `json:"thread_id,omitempty"`
-	Status        string          `json:"status"`
-	InputJSON     json.RawMessage `json:"input_json"`
-	OutputJSON    json.RawMessage `json:"output_json,omitempty"`
-	ErrorJSON     json.RawMessage `json:"error_json,omitempty"`
-	StartedAt     *time.Time      `json:"started_at,omitempty"`
-	FinishedAt    *time.Time      `json:"finished_at,omitempty"`
-	CreatedAt     time.Time       `json:"created_at"`
+	ID              uuid.UUID       `json:"id"`
+	FlowVersionID   uuid.UUID       `json:"flowVersionId"`
+	ThreadID        *uuid.UUID      `json:"threadId,omitempty"`
+	Status          string          `json:"status"`
+	Input           json.RawMessage `json:"input,omitempty"`
+	Output          json.RawMessage `json:"output,omitempty"`
+	Error           json.RawMessage `json:"error,omitempty"`
+	StartedAt       *time.Time      `json:"startedAt,omitempty"`
+	FinishedAt      *time.Time      `json:"finishedAt,omitempty"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
+	HumanWaitTaskID *uuid.UUID      `json:"humanWaitTaskId,omitempty"`
+}
+
+type RunPageResponse struct {
+	Content       []*RunResponse `json:"content"`
+	TotalElements int64          `json:"totalElements"`
+	TotalPages    int            `json:"totalPages"`
+	Number        int            `json:"number"`
+	Size          int            `json:"size"`
 }

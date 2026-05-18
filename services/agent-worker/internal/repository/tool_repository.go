@@ -21,7 +21,7 @@ func NewToolRepository(pool *pgxpool.Pool) *ToolRepository {
 func (r *ToolRepository) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.Tool, error) {
 	const q = `
 		SELECT id, tenant_id, workspace_id, name, description, tool_type,
-		       config_json, input_schema, created_at
+		       config_json, input_schema, output_schema, created_at
 		FROM tools
 		WHERE id = $1
 		  AND tenant_id = $2
@@ -34,7 +34,7 @@ func (r *ToolRepository) GetByID(ctx context.Context, id, tenantID, workspaceID 
 	if err := row.Scan(
 		&t.ID, &t.TenantID, &t.WorkspaceID,
 		&t.Name, &t.Description, &t.ToolType,
-		&t.ConfigJSON, &t.SchemaJSON, &t.CreatedAt,
+		&t.ConfigJSON, &t.SchemaJSON, &t.OutputSchemaJSON, &t.CreatedAt,
 	); err != nil {
 		return nil, fmt.Errorf("GetByID tool %s: %w", id, err)
 	}
@@ -48,7 +48,7 @@ func (r *ToolRepository) GetByIDs(ctx context.Context, ids []uuid.UUID, tenantID
 	}
 	const q = `
 		SELECT id, tenant_id, workspace_id, name, description, tool_type,
-		       config_json, input_schema, created_at
+		       config_json, input_schema, output_schema, created_at
 		FROM tools
 		WHERE id = ANY($1)
 		  AND tenant_id = $2
@@ -67,7 +67,7 @@ func (r *ToolRepository) GetByIDs(ctx context.Context, ids []uuid.UUID, tenantID
 		if err := rows.Scan(
 			&t.ID, &t.TenantID, &t.WorkspaceID,
 			&t.Name, &t.Description, &t.ToolType,
-			&t.ConfigJSON, &t.SchemaJSON, &t.CreatedAt,
+			&t.ConfigJSON, &t.SchemaJSON, &t.OutputSchemaJSON, &t.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan tool: %w", err)
 		}

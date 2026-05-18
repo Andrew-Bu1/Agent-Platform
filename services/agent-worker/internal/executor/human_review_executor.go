@@ -17,15 +17,18 @@ import (
 type HumanReviewExecutor struct {
 	humanReviewRepo *repository.HumanReviewRepository
 	nodeRunRepo     *repository.NodeRunRepository
+	eventPub        EventPublisher // nil disables real-time publishing (tests)
 }
 
 func NewHumanReviewExecutor(
 	humanReviewRepo *repository.HumanReviewRepository,
 	nodeRunRepo *repository.NodeRunRepository,
+	eventPub EventPublisher,
 ) *HumanReviewExecutor {
 	return &HumanReviewExecutor{
 		humanReviewRepo: humanReviewRepo,
 		nodeRunRepo:     nodeRunRepo,
+		eventPub:        eventPub,
 	}
 }
 
@@ -51,7 +54,7 @@ func (e *HumanReviewExecutor) Execute(ctx context.Context, job model.NodeJob) (j
 		return nil, nil, err
 	}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	reviewPayload, _ := json.Marshal(map[string]interface{}{
 		"task_id":     task.ID,
 		"run_id":      job.RunID,
 		"node_run_id": job.NodeRunID,
@@ -59,8 +62,17 @@ func (e *HumanReviewExecutor) Execute(ctx context.Context, job model.NodeJob) (j
 
 	events := []model.WorkerEvent{{
 		EventType:   "HumanReviewRequested",
-		PayloadJSON: json.RawMessage(payload),
+		PayloadJSON: json.RawMessage(reviewPayload),
 	}}
+
+	// Publish in real-time so the client knows immediately that human input is needed.
+	if e.eventPub != nil {
+		ev, _ := json.Marshal(struct {
+			Type string          `json:"type"`
+			Data json.RawMessage `json:"data"`
+		}{"HumanReviewRequested", reviewPayload})
+		_ = e.eventPub.PublishEvent(ctx, job.RunID, ev)
+	}
 
 	output, _ := json.Marshal(map[string]interface{}{
 		"task_id": task.ID,

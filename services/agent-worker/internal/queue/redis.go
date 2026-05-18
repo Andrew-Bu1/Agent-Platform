@@ -56,8 +56,10 @@ func (c *Client) PushNodeResult(ctx context.Context, result model.NodeResult) er
 	return c.rdb.RPush(ctx, c.eventQueue, data).Err()
 }
 
-// PublishToken publishes a streaming token event to the run's Pub/Sub channel.
-func (c *Client) PublishToken(ctx context.Context, runID uuid.UUID, payload json.RawMessage) error {
+// PublishEvent publishes any SSE-envelope event to the run's Pub/Sub channel.
+// Used for both streaming token deltas and structural events (AgentStarted, etc.)
+// so that the client receives them in real-time rather than after node completion.
+func (c *Client) PublishEvent(ctx context.Context, runID uuid.UUID, payload json.RawMessage) error {
 	channel := "run:" + runID.String() + ":stream"
 	return c.rdb.Publish(ctx, channel, string(payload)).Err()
 }

@@ -26,7 +26,6 @@ func (h *ThreadHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /threads", h.List)
 	mux.HandleFunc("GET /threads/{id}", h.GetByID)
 	mux.HandleFunc("GET /threads/{id}/runs", h.ListRuns)
-	mux.HandleFunc("GET /runs/pending-review", h.ListPendingReview)
 }
 
 func (h *ThreadHandler) Create(w http.ResponseWriter, r *http.Request) {

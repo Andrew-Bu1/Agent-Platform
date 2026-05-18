@@ -110,11 +110,12 @@ func (e *Engine) handleResult(ctx context.Context, result model.NodeResult) erro
 	now := time.Now()
 	nodeRunUUID := result.NodeRunID
 
-	// Write and forward all worker events.
+	// Persist worker events to DB for the replay/reconnect path.
+	// The worker already published them to the run's pub/sub channel in real-time,
+	// so we do NOT re-publish here to avoid duplicates on the SSE stream.
 	for _, we := range result.Events {
 		_ = e.eventRepo.Insert(ctx, e.run.ID, &nodeRunUUID,
 			e.run.TenantID, e.run.WorkspaceID, we.EventType, we.PayloadJSON)
-		e.publishSSE(ctx, model.SSEEvent{Type: we.EventType, Data: we.PayloadJSON})
 	}
 
 	// Human review pause — intercept before normal completion flow.
@@ -139,12 +140,14 @@ func (e *Engine) handleResult(ctx context.Context, result model.NodeResult) erro
 	if result.Status == "failed" {
 		errJSON := []byte(fmt.Sprintf(`{"message":%q}`, result.ErrorMsg))
 		_ = e.nodeRunRepo.UpdateError(ctx, result.NodeRunID, errJSON, now)
-		e.emitRunEvent(ctx, &nodeRunUUID, "NodeFailed", json.RawMessage(`{"node_id":"`+result.NodeID+`"}`))
+		nodeFailedPayload, _ := json.Marshal(map[string]string{"node_id": result.NodeID})
+		e.emitRunEvent(ctx, &nodeRunUUID, "NodeFailed", json.RawMessage(nodeFailedPayload))
 		return fmt.Errorf("node %s failed: %s", result.NodeID, result.ErrorMsg)
 	}
 
 	_ = e.nodeRunRepo.UpdateOutput(ctx, result.NodeRunID, "completed", result.OutputJSON, now)
-	e.emitRunEvent(ctx, &nodeRunUUID, "NodeCompleted", json.RawMessage(`{"node_id":"`+result.NodeID+`"}`))
+	nodeCompletedPayload, _ := json.Marshal(map[string]string{"node_id": result.NodeID})
+	e.emitRunEvent(ctx, &nodeRunUUID, "NodeCompleted", json.RawMessage(nodeCompletedPayload))
 
 	delete(e.state.PendingNodes, result.NodeID)
 	e.state.CompletedNodes[result.NodeID] = true
@@ -196,8 +199,8 @@ func (e *Engine) advanceFrom(ctx context.Context, nodeID string, prevOutput json
 
 func (e *Engine) advanceIfElse(ctx context.Context, node *model.GraphNode, edges []model.GraphEdge, prevOutput json.RawMessage) error {
 	var cfg model.NodeIfElseConfig
-	if len(node.Config) > 0 {
-		_ = json.Unmarshal(node.Config, &cfg)
+	if len(node.Data) > 0 {
+		_ = json.Unmarshal(node.Data, &cfg)
 	}
 
 	label := "false"
@@ -294,7 +297,7 @@ func (e *Engine) dispatchNode(ctx context.Context, node *model.GraphNode, branch
 		RunID:       e.run.ID,
 		NodeID:      node.ID,
 		NodeType:    node.Type,
-		NodeName:    node.Name,
+		NodeName:    node.Label,
 		Status:      "running",
 		BranchKey:   branchKey,
 		Iteration:   iteration,
@@ -309,7 +312,8 @@ func (e *Engine) dispatchNode(ctx context.Context, node *model.GraphNode, branch
 
 	e.state.PendingNodes[node.ID] = true
 	_ = e.runRepo.UpdateState(ctx, e.run.ID, e.state)
-	e.emitRunEvent(ctx, &nodeRunID, "NodeStarted", json.RawMessage(`{"node_id":"`+node.ID+`"}`))
+	nodeStartedPayload, _ := json.Marshal(map[string]string{"node_id": node.ID})
+	e.emitRunEvent(ctx, &nodeRunID, "NodeStarted", json.RawMessage(nodeStartedPayload))
 
 	if node.Type == "parallel" {
 		outgoing := e.outgoingEdges(node.ID)
@@ -342,8 +346,8 @@ func (e *Engine) dispatchNode(ctx context.Context, node *model.GraphNode, branch
 		ThreadID:    e.run.ThreadID,
 		NodeID:      node.ID,
 		NodeType:    node.Type,
-		NodeName:    node.Name,
-		NodeConfig:  node.Config,
+		NodeName:    node.Label,
+		NodeConfig:  node.Data,
 		InputJSON:   input,
 	}
 	if err := e.q.PushNodeJob(ctx, job); err != nil {
@@ -359,7 +363,8 @@ func (e *Engine) resolveInlineNode(ctx context.Context, node *model.GraphNode, n
 	e.state.CompletedNodes[node.ID] = true
 	e.state.NodeOutputs[node.ID] = input
 	_ = e.runRepo.UpdateState(ctx, e.run.ID, e.state)
-	e.emitRunEvent(ctx, &nodeRunID, "NodeCompleted", json.RawMessage(`{"node_id":"`+node.ID+`"}`))
+	inlineCompletedPayload, _ := json.Marshal(map[string]string{"node_id": node.ID})
+	e.emitRunEvent(ctx, &nodeRunID, "NodeCompleted", json.RawMessage(inlineCompletedPayload))
 
 	if node.Type == "end" {
 		return nil
@@ -370,7 +375,8 @@ func (e *Engine) resolveInlineNode(ctx context.Context, node *model.GraphNode, n
 func (e *Engine) failRun(ctx context.Context, msg string) {
 	now := time.Now()
 	_ = e.runRepo.UpdateError(ctx, e.run.ID, msg, now)
-	e.emitRunEvent(ctx, nil, "RunFailed", json.RawMessage(`{"error":"`+msg+`"}`))
+	errPayload, _ := json.Marshal(map[string]string{"error": msg})
+	e.emitRunEvent(ctx, nil, "RunFailed", json.RawMessage(errPayload))
 }
 
 func (e *Engine) completeRun(ctx context.Context) {
@@ -409,12 +415,11 @@ func (e *Engine) publishSSE(ctx context.Context, event model.SSEEvent) {
 // ---------------------------------------------------------------------------
 
 func (e *Engine) nodeByID(id string) *model.GraphNode {
-	for i := range e.graph.Nodes {
-		if e.graph.Nodes[i].ID == id {
-			return &e.graph.Nodes[i]
-		}
+	node, ok := e.graph.Nodes[id]
+	if !ok {
+		return nil
 	}
-	return nil
+	return &node
 }
 
 func (e *Engine) outgoingEdges(nodeID string) []model.GraphEdge {

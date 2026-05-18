@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/Andrew-Bu1/Agent-Platform/services/agent-worker/internal/aihub"
+	workerauth "github.com/Andrew-Bu1/Agent-Platform/services/agent-worker/internal/auth"
 	"github.com/Andrew-Bu1/Agent-Platform/services/agent-worker/internal/config"
 	"github.com/Andrew-Bu1/Agent-Platform/services/agent-worker/internal/executor"
 	"github.com/Andrew-Bu1/Agent-Platform/services/agent-worker/internal/queue"
@@ -43,16 +44,24 @@ func main() {
 	humanReviewRepo := repository.NewHumanReviewRepository(pool)
 
 	// AIHub client
-	aihubClient := aihub.NewClient(cfg.AihubURL)
+	tokenProvider := workerauth.NewOAuthTokenProvider(
+		cfg.IamURL,
+		cfg.IamOAuthClientID,
+		cfg.IamOAuthClientSecret,
+	)
+	if !tokenProvider.Enabled() {
+		log.Println("warning: IAM OAuth credentials not configured; AIHub calls will be unauthenticated")
+	}
+	aihubClient := aihub.NewClient(cfg.AihubURL, tokenProvider)
 
-	// Queue client (must be before executors — AgentExecutor uses it as TokenPublisher)
+	// Queue client (must be before executors — both executors use it as EventPublisher)
 	q := queue.NewClient(cfg.Redis, cfg.NodeQueue, cfg.EventQueue, cfg.DLQKey)
 	defer q.Close()
 	log.Println("redis ready")
 
 	// Executors
 	agentExec := executor.NewAgentExecutor(agentRepo, toolRepo, messageRepo, nodeRunRepo, aihubClient, q)
-	humanReviewExec := executor.NewHumanReviewExecutor(humanReviewRepo, nodeRunRepo)
+	humanReviewExec := executor.NewHumanReviewExecutor(humanReviewRepo, nodeRunRepo, q)
 
 	// Health endpoint (liveness probe).
 	mux := http.NewServeMux()
