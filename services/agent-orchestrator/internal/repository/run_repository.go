@@ -86,56 +86,56 @@ func (r *RunRepository) GetByIDOnly(ctx context.Context, id uuid.UUID) (*model.R
 	return &run, nil
 }
 
-func (r *RunRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string, finishedAt *time.Time) error {
+func (r *RunRepository) UpdateStatus(ctx context.Context, id, tenantID uuid.UUID, status string, finishedAt *time.Time) error {
 	const q = `
-		UPDATE runs SET status = $2, finished_at = $3, updated_at = NOW()
-		WHERE id = $1`
-	_, err := r.db.Exec(ctx, q, id, status, finishedAt)
+		UPDATE runs SET status = $3, finished_at = $4, updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2`
+	_, err := r.db.Exec(ctx, q, id, tenantID, status, finishedAt)
 	if err != nil {
 		return fmt.Errorf("RunRepository.UpdateStatus: %w", err)
 	}
 	return nil
 }
 
-func (r *RunRepository) UpdateState(ctx context.Context, id uuid.UUID, state *model.RunState) error {
+func (r *RunRepository) UpdateState(ctx context.Context, id, tenantID uuid.UUID, state *model.RunState) error {
 	data, err := json.Marshal(state)
 	if err != nil {
 		return fmt.Errorf("RunRepository.UpdateState marshal: %w", err)
 	}
-	const q = `UPDATE runs SET state_json = $2, updated_at = NOW() WHERE id = $1`
-	_, err = r.db.Exec(ctx, q, id, data)
+	const q = `UPDATE runs SET state_json = $3, updated_at = NOW() WHERE id = $1 AND tenant_id = $2`
+	_, err = r.db.Exec(ctx, q, id, tenantID, data)
 	if err != nil {
 		return fmt.Errorf("RunRepository.UpdateState: %w", err)
 	}
 	return nil
 }
 
-func (r *RunRepository) UpdateOutput(ctx context.Context, id uuid.UUID, status string, output json.RawMessage, finishedAt time.Time) error {
+func (r *RunRepository) UpdateOutput(ctx context.Context, id, tenantID uuid.UUID, status string, output json.RawMessage, finishedAt time.Time) error {
 	const q = `
-		UPDATE runs SET status = $2, output_json = $3, finished_at = $4, updated_at = NOW()
-		WHERE id = $1`
-	_, err := r.db.Exec(ctx, q, id, status, output, finishedAt)
+		UPDATE runs SET status = $3, output_json = $4, finished_at = $5, updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2`
+	_, err := r.db.Exec(ctx, q, id, tenantID, status, output, finishedAt)
 	if err != nil {
 		return fmt.Errorf("RunRepository.UpdateOutput: %w", err)
 	}
 	return nil
 }
 
-func (r *RunRepository) UpdateError(ctx context.Context, id uuid.UUID, errMsg string, finishedAt time.Time) error {
-	errJSON := []byte(`{"message":` + `"` + errMsg + `"` + `}`)
+func (r *RunRepository) UpdateError(ctx context.Context, id, tenantID uuid.UUID, errMsg string, finishedAt time.Time) error {
+	errJSON, _ := json.Marshal(map[string]string{"message": errMsg})
 	const q = `
-		UPDATE runs SET status = 'failed', error_json = $2, finished_at = $3, updated_at = NOW()
-		WHERE id = $1`
-	_, err := r.db.Exec(ctx, q, id, errJSON, finishedAt)
+		UPDATE runs SET status = 'failed', error_json = $3, finished_at = $4, updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2`
+	_, err := r.db.Exec(ctx, q, id, tenantID, errJSON, finishedAt)
 	if err != nil {
 		return fmt.Errorf("RunRepository.UpdateError: %w", err)
 	}
 	return nil
 }
 
-func (r *RunRepository) SetStarted(ctx context.Context, id uuid.UUID, startedAt time.Time) error {
-	const q = `UPDATE runs SET status = 'running', started_at = $2, updated_at = NOW() WHERE id = $1`
-	_, err := r.db.Exec(ctx, q, id, startedAt)
+func (r *RunRepository) SetStarted(ctx context.Context, id, tenantID uuid.UUID, startedAt time.Time) error {
+	const q = `UPDATE runs SET status = 'running', started_at = $3, updated_at = NOW() WHERE id = $1 AND tenant_id = $2`
+	_, err := r.db.Exec(ctx, q, id, tenantID, startedAt)
 	return err
 }
 

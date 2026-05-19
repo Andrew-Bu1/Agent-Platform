@@ -24,6 +24,7 @@ type NodeJob struct {
 type NodeResult struct {
 	RunID      uuid.UUID       `json:"run_id"`
 	NodeRunID  uuid.UUID       `json:"node_run_id"`
+	TenantID   uuid.UUID       `json:"tenant_id"`
 	NodeID     string          `json:"node_id"`
 	Status     string          `json:"status"` // completed, failed
 	OutputJSON json.RawMessage `json:"output_json,omitempty"`

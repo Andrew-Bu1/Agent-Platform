@@ -180,7 +180,7 @@ func (s *RunService) Cancel(ctx context.Context, id, tenantID, workspaceID uuid.
 		return fmt.Errorf("run is already in terminal status: %s", run.Status)
 	}
 	now := time.Now()
-	return s.runRepo.UpdateStatus(ctx, id, "cancelled", &now)
+	return s.runRepo.UpdateStatus(ctx, id, tenantID, "cancelled", &now)
 }
 
 // ResumeHumanReview resumes a run that is waiting_for_human by injecting a
@@ -213,10 +213,10 @@ func (s *RunService) ResumeHumanReview(
 	hw := *state.HumanWait
 	state.HumanWait = nil
 
-	if err := s.runRepo.UpdateState(ctx, runID, &state); err != nil {
+	if err := s.runRepo.UpdateState(ctx, runID, tenantID, &state); err != nil {
 		return fmt.Errorf("clear human_wait state: %w", err)
 	}
-	if err := s.runRepo.UpdateStatus(ctx, runID, "running", nil); err != nil {
+	if err := s.runRepo.UpdateStatus(ctx, runID, tenantID, "running", nil); err != nil {
 		return fmt.Errorf("update run status: %w", err)
 	}
 
@@ -227,6 +227,7 @@ func (s *RunService) ResumeHumanReview(
 	result := model.NodeResult{
 		RunID:      runID,
 		NodeRunID:  hw.NodeRunID,
+		TenantID:   run.TenantID,
 		NodeID:     hw.NodeID,
 		Status:     "completed",
 		OutputJSON: output,

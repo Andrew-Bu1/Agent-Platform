@@ -95,6 +95,9 @@ func (d *Dispatcher) advance(ctx context.Context, result model.NodeResult) error
 	if err != nil {
 		return fmt.Errorf("load run: %w", err)
 	}
+	if run.TenantID != result.TenantID {
+		return fmt.Errorf("tenant mismatch: result tenant %s does not match run tenant %s", result.TenantID, run.TenantID)
+	}
 
 	var state model.RunState
 	if err := json.Unmarshal(run.StateJSON, &state); err != nil {
