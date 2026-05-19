@@ -61,7 +61,7 @@ func main() {
 
 	// Services
 	datasourceSvc := service.NewDatasourceService(datasourceRepo)
-	documentSvc := service.NewDocumentService(documentRepo, minioStorage)
+	documentSvc := service.NewDocumentService(documentRepo, datasourceRepo, minioStorage)
 	ingestionSvc := service.NewIngestionService(ingestionRepo, documentRepo, redisQueue)
 	chunkSvc := service.NewChunkService(chunkRepo)
 	searchSvc := service.NewSearchService(repository.NewSearchRepository(pool), datasourceRepo)

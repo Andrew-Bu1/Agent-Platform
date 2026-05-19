@@ -19,17 +19,25 @@ import (
 var ErrDuplicateFile = errors.New("file with the same hash already exists in this datasource")
 
 type DocumentService struct {
-	repo  *repository.DocumentRepository
-	minio *storage.MinioStorage
+	repo          *repository.DocumentRepository
+	datasourceRepo *repository.DatasourceRepository
+	minio         *storage.MinioStorage
 }
 
-func NewDocumentService(repo *repository.DocumentRepository, minio *storage.MinioStorage) *DocumentService {
-	return &DocumentService{repo: repo, minio: minio}
+func NewDocumentService(repo *repository.DocumentRepository, datasourceRepo *repository.DatasourceRepository, minio *storage.MinioStorage) *DocumentService {
+	return &DocumentService{repo: repo, datasourceRepo: datasourceRepo, minio: minio}
 }
 
 // Create uploads the file to MinIO then persists the document record.
 // The caller passes the raw file bytes; storagePath is computed here.
 func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRequest, name string, data []byte, fileHash string, tenantID, workspaceID uuid.UUID, createdByUserID *uuid.UUID) (*model.DocumentResponse, error) {
+	// Verify the target datasource belongs to the caller's tenant/workspace before
+	// accepting the upload. Without this check any authenticated user who knows a
+	// foreign datasource UUID could attach documents to it.
+	if _, err := s.datasourceRepo.GetByID(ctx, req.DatasourceID, tenantID, workspaceID); err != nil {
+		return nil, fmt.Errorf("datasource not found: %w", err)
+	}
+
 	existing, err := s.repo.FindByHash(ctx, req.DatasourceID, tenantID, workspaceID, fileHash)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
