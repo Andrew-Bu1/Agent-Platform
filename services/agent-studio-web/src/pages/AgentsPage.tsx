@@ -7,6 +7,7 @@ import { agentsApi } from '../api/agents';
 import { modelsApi } from '../api/aihub';
 import { toolsApi } from '../api/tools';
 import type { Agent, CreateAgentRequest, ModelConfig, Tool } from '../types/api';
+import type { MemoryStrategy } from '../types/canvas';
 
 const KIND_PERMISSIONS: Record<string, string[]> = {
   react: ['model:invoke'],
@@ -221,6 +222,13 @@ function AgentModal({
   const def = agent?.definition ?? {};
   const [systemPrompt, setSystemPrompt] = useState((def.system_prompt as string) ?? '');
   const [maxIterations, setMaxIterations] = useState(String((def.max_iterations as number) ?? 10));
+  const defMem = (def.memory as { memory_strategy?: string; memory_last_n?: number; memory_summarize_threshold?: number; memory_summarize_model?: string }) ?? {};
+  const [memoryStrategy, setMemoryStrategy] = useState<MemoryStrategy>(
+    (defMem.memory_strategy as MemoryStrategy) ?? 'last_n',
+  );
+  const [memoryLastN, setMemoryLastN] = useState(String(defMem.memory_last_n ?? 20));
+  const [memorySummarizeThreshold, setMemorySummarizeThreshold] = useState(String(defMem.memory_summarize_threshold ?? 40));
+  const [memorySummarizeModel, setMemorySummarizeModel] = useState(defMem.memory_summarize_model ?? '');
 
   // Remote data
   const [models, setModels] = useState<ModelConfig[]>([]);
@@ -255,6 +263,16 @@ function AgentModal({
       if (systemPrompt.trim()) d.system_prompt = systemPrompt.trim();
       const n = parseInt(maxIterations, 10);
       if (!isNaN(n)) d.max_iterations = n;
+      const mem: Record<string, unknown> = { memory_strategy: memoryStrategy };
+      if (memoryStrategy === 'last_n') {
+        const lastN = parseInt(memoryLastN, 10);
+        mem.memory_last_n = isNaN(lastN) ? 20 : lastN;
+      } else if (memoryStrategy === 'summarize') {
+        const t = parseInt(memorySummarizeThreshold, 10);
+        mem.memory_summarize_threshold = isNaN(t) ? 40 : t;
+        if (memorySummarizeModel.trim()) mem.memory_summarize_model = memorySummarizeModel.trim();
+      }
+      d.memory = mem;
     }
     return d;
   }
@@ -408,6 +426,78 @@ function AgentModal({
                   onChange={(e) => setMaxIterations(e.target.value)}
                   className="w-32 px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                 />
+              </div>
+              <div className="border-t border-gray-100 pt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Memory</label>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Strategy</label>
+                    <div className="flex gap-2">
+                      {(['last_n', 'summarize', 'none'] as const).map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setMemoryStrategy(s)}
+                          className={`flex-1 py-2 text-sm rounded-xl border font-medium transition-colors ${
+                            memoryStrategy === s
+                              ? 'bg-brand-600 text-white border-brand-600'
+                              : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300 hover:text-brand-700'
+                          }`}
+                        >
+                          {s === 'last_n' ? 'Last N' : s === 'summarize' ? 'Summarize' : 'None'}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1.5">
+                      {memoryStrategy === 'none'
+                        ? 'Agent receives no conversation history — fresh context every run.'
+                        : memoryStrategy === 'summarize'
+                        ? 'Keeps a rolling summary in the thread; summarizes when the unsummarized tail exceeds the threshold.'
+                        : 'Load the most recent N messages from the thread before each run.'}
+                    </p>
+                  </div>
+                  {memoryStrategy === 'last_n' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Window size (messages)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={memoryLastN}
+                        onChange={(e) => setMemoryLastN(e.target.value)}
+                        className="w-32 px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Default: 20. Higher values consume more context tokens.</p>
+                    </div>
+                  )}
+                  {memoryStrategy === 'summarize' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Summarize threshold (messages)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={1000}
+                          value={memorySummarizeThreshold}
+                          onChange={(e) => setMemorySummarizeThreshold(e.target.value)}
+                          className="w-32 px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Summarize when unsummarized messages exceed this count. Default: 40.</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Summarizer model (optional)</label>
+                        <input
+                          type="text"
+                          value={memorySummarizeModel}
+                          onChange={(e) => setMemorySummarizeModel(e.target.value)}
+                          placeholder="Defaults to agent model"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Use a cheaper/faster model for summarization (e.g. gpt-4o-mini).</p>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           )}

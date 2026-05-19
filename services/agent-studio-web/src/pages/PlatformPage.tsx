@@ -18,7 +18,6 @@ import type {
   FeatureEntitlement,
   ModelConfig,
   ModelEntitlement,
-  ModelOperationType,
   TenantDto,
   WorkspaceDto,
 } from '../types/api';
@@ -290,28 +289,41 @@ function ModelEntitlements({
   onRefresh: () => void;
   onToast: (type: 'success' | 'error', message: string) => void;
 }) {
-  const [modelKey, setModelKey] = useState('');
-  const [operationType, setOperationType] = useState<ModelOperationType>('chat');
+  const [selectedModelId, setSelectedModelId] = useState('');
   const [rpmLimit, setRpmLimit] = useState('');
   const [tpmLimit, setTpmLimit] = useState('');
   const [saving, setSaving] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
 
+  const selectedModel = useMemo(
+    () => models.find((m) => m.id === selectedModelId) ?? null,
+    [models, selectedModelId],
+  );
+
+  const modelsByOpType = useMemo(() => {
+    const groups: Record<string, ModelConfig[]> = {};
+    for (const m of models) {
+      if (!m.is_active) continue;
+      (groups[m.operation_type] ??= []).push(m);
+    }
+    return groups;
+  }, [models]);
+
   async function grant(e: FormEvent) {
     e.preventDefault();
-    if (!tenantId) return;
+    if (!tenantId || !selectedModel) return;
     setSaving(true);
     try {
       await iamApi.grantPlatformModelEntitlement(tenantId, {
-        modelKey,
-        operationType,
+        modelKey: selectedModel.model_key,
+        operationType: selectedModel.operation_type,
         allowed: true,
         rpmLimit: rpmLimit ? Number(rpmLimit) : undefined,
         tpmLimit: tpmLimit ? Number(tpmLimit) : undefined,
         config: '{}',
       });
-      setModelKey('');
+      setSelectedModelId('');
       setRpmLimit('');
       setTpmLimit('');
       onToast('success', 'Model entitlement granted.');
@@ -351,37 +363,40 @@ function ModelEntitlements({
     }
   }
 
-  const modelOptions = useMemo(() => {
-    const keys = new Set(models.map((model) => model.model_key));
-    return Array.from(keys).sort();
-  }, [models]);
-
   return (
     <Section title="Model entitlements" description="Grant AI model access and rate limits for the selected tenant.">
-      <form onSubmit={grant} className="mb-4 grid gap-3 md:grid-cols-[1.5fr_1fr_1fr_1fr_auto]">
-        <input
-          list="platform-model-keys"
-          value={modelKey}
-          onChange={(e) => setModelKey(e.target.value)}
-          placeholder="model_key"
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono outline-none focus:border-brand-400"
-          required
-        />
-        <datalist id="platform-model-keys">
-          {modelOptions.map((key) => <option key={key} value={key} />)}
-        </datalist>
+      <form onSubmit={grant} className="mb-4 grid gap-3 md:grid-cols-[2fr_auto_1fr_1fr_auto]">
         <select
-          value={operationType}
-          onChange={(e) => setOperationType(e.target.value as ModelOperationType)}
+          value={selectedModelId}
+          onChange={(e) => setSelectedModelId(e.target.value)}
           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400"
+          required
         >
-          <option value="chat">chat</option>
-          <option value="embed">embed</option>
-          <option value="rerank">rerank</option>
+          <option value="">Select a model…</option>
+          {Object.entries(modelsByOpType).map(([opType, opModels]) => (
+            <optgroup key={opType} label={opType.toUpperCase()}>
+              {opModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.display_name} — {m.model_key}
+                </option>
+              ))}
+            </optgroup>
+          ))}
         </select>
+        <span className={`inline-flex items-center rounded-lg border px-3 py-2 text-xs font-medium ${
+          selectedModel?.operation_type === 'chat'
+            ? 'border-blue-200 bg-blue-50 text-blue-700'
+            : selectedModel?.operation_type === 'embed'
+            ? 'border-purple-200 bg-purple-50 text-purple-700'
+            : selectedModel?.operation_type === 'rerank'
+            ? 'border-orange-200 bg-orange-50 text-orange-700'
+            : 'border-gray-200 bg-gray-50 text-gray-400'
+        }`}>
+          {selectedModel?.operation_type ?? 'type'}
+        </span>
         <input value={rpmLimit} onChange={(e) => setRpmLimit(e.target.value.replace(/\D/g, ''))} placeholder="RPM" className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-400" />
         <input value={tpmLimit} onChange={(e) => setTpmLimit(e.target.value.replace(/\D/g, ''))} placeholder="TPM" className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-400" />
-        <button disabled={!tenantId || saving || !modelKey} className="flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+        <button disabled={!tenantId || saving || !selectedModel} className="flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Grant
         </button>

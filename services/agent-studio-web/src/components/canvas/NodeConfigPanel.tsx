@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { type Node } from '@xyflow/react';
 import { X, Plus, Trash2, ChevronDown, Loader2 } from 'lucide-react';
-import { type CanvasNodeData, type NodeKind } from '../../types/canvas';
+import { type CanvasNodeData, type NodeKind, type MemoryStrategy } from '../../types/canvas';
 import { NODE_META } from './nodes/index';
 import { toolsApi } from '../../api/tools';
 import type { Agent, Tool } from '../../types/api';
@@ -148,6 +148,92 @@ function AgentConfig({
           </div>
         )}
       </Field>
+      <div className="border-t border-gray-100 pt-3">
+        <p className="text-xs font-medium text-gray-600 mb-2">Memory</p>
+        <MemoryPanel data={data} onChange={onChange} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Memory config sub-panel ──────────────────────────────────────────────────
+
+function MemoryPanel({
+  data,
+  onChange,
+}: {
+  data: CanvasNodeData;
+  onChange: (d: Partial<CanvasNodeData>) => void;
+}) {
+  const mem = data.memory ?? { memory_strategy: 'last_n' as MemoryStrategy, memory_last_n: 20 };
+  const strategy: MemoryStrategy = mem.memory_strategy ?? 'last_n';
+
+  function setStrategy(s: MemoryStrategy) {
+    onChange({ memory: { ...mem, memory_strategy: s } });
+  }
+
+  const strategyLabels: Record<MemoryStrategy, string> = {
+    last_n: 'Last N',
+    summarize: 'Summarize',
+    none: 'None',
+  };
+
+  const strategyHelp: Record<MemoryStrategy, string> = {
+    last_n: 'Load the most recent N messages from the thread.',
+    summarize: 'Keep a rolling summary in the thread; summarize when the unsummarized tail exceeds the threshold.',
+    none: 'Agent receives no thread history — stateless per run.',
+  };
+
+  return (
+    <div className="space-y-2">
+      <Field label="Memory strategy">
+        <div className="flex gap-1.5">
+          {(['last_n', 'summarize', 'none'] as MemoryStrategy[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStrategy(s)}
+              className={`flex-1 py-1.5 text-xs rounded-lg border font-medium transition-colors ${
+                strategy === s
+                  ? 'bg-brand-600 text-white border-brand-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'
+              }`}
+            >
+              {strategyLabels[s]}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-400 mt-1">{strategyHelp[strategy]}</p>
+      </Field>
+
+      {strategy === 'last_n' && (
+        <Field label="Window size (messages)">
+          <Input
+            value={String(mem.memory_last_n ?? 20)}
+            onChange={(v) => onChange({ memory: { ...mem, memory_last_n: Math.max(1, Number(v) || 20) } })}
+            placeholder="20"
+          />
+        </Field>
+      )}
+
+      {strategy === 'summarize' && (
+        <>
+          <Field label="Summarize threshold (messages)">
+            <Input
+              value={String(mem.memory_summarize_threshold ?? 40)}
+              onChange={(v) => onChange({ memory: { ...mem, memory_summarize_threshold: Math.max(1, Number(v) || 40) } })}
+              placeholder="40"
+            />
+          </Field>
+          <Field label="Summarizer model (optional)">
+            <Input
+              value={mem.memory_summarize_model ?? ''}
+              onChange={(v) => onChange({ memory: { ...mem, memory_summarize_model: v || undefined } })}
+              placeholder="Defaults to agent model"
+            />
+          </Field>
+        </>
+      )}
     </div>
   );
 }
@@ -381,7 +467,28 @@ export default function NodeConfigPanel({
   function renderConfigTab() {
     switch (kind) {
       case 'agent':        return <AgentConfig data={data} agents={agents} onChange={onChange} />;
-      case 'agent_team':   return null; // handled by AgentTeamDrawer
+      case 'agent_team':   return (
+        <div className="space-y-3">
+          <Field label="Supervisor agent">
+            <Select
+              value={data.agentId ?? ''}
+              onChange={(v) => onChange({ agentId: v, entryAgentId: v })}
+              options={agents.map((a) => ({ value: a.id, label: a.name }))}
+            />
+          </Field>
+          <Field label="Max iterations">
+            <Input
+              value={String(data.maxIterations ?? 10)}
+              onChange={(v) => onChange({ maxIterations: Math.max(1, Number(v) || 10) })}
+              placeholder="10"
+            />
+          </Field>
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs font-medium text-gray-600 mb-2">Supervisor memory</p>
+            <MemoryPanel data={data} onChange={onChange} />
+          </div>
+        </div>
+      );
       case 'if_else':      return <IfElseConfig data={data} onChange={onChange} />;
       case 'human_review': return <p className="text-xs text-gray-500">No configuration required. The run pauses here and resumes when a human submits a decision via the Review dashboard.</p>;
       case 'router':       return <RouterConfig data={data} onChange={onChange} />;

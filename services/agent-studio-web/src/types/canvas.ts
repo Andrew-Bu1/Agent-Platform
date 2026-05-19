@@ -11,6 +11,15 @@ export type NodeKind =
   | 'aggregator'
   | 'end';
 
+export type MemoryStrategy = 'last_n' | 'none' | 'summarize';
+
+export interface MemoryConfig {
+  memory_strategy: MemoryStrategy;
+  memory_last_n?: number;              // window size; meaningful only for "last_n"
+  memory_summarize_threshold?: number; // trigger threshold; meaningful only for "summarize"
+  memory_summarize_model?: string;     // model for summarizer call; defaults to agent model
+}
+
 export interface CanvasNodeData {
   label: string;
   description?: string;
@@ -19,11 +28,12 @@ export interface CanvasNodeData {
   agentKind?: string;
   modelId?: string;
   // agent_team node — supervisor-driven handoff only
-  supervisorAgentId?: string;
   memberAgentIds?: string[];
   entryAgentId?: string;
   exitAgentId?: string;
   maxIterations?: number;
+  // memory config — node-level override (agent/agent_team only)
+  memory?: MemoryConfig;
   // if_else node
   ifExpression?: string;
   // router node
