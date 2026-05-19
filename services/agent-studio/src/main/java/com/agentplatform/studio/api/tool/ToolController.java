@@ -68,6 +68,7 @@ public class ToolController {
     public ApiResponse<ToolDto> update(@AuthenticationPrincipal AuthContext auth,
                                        @PathVariable UUID id,
                                        @RequestBody UpdateToolRequest req) {
+        auth.requirePermission("agent_studio.tools");
         var tool = toolService.update(auth, id,
                 req.getName(),
                 req.getDescription(),
@@ -81,6 +82,7 @@ public class ToolController {
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> archive(@AuthenticationPrincipal AuthContext auth, @PathVariable UUID id) {
+        auth.requirePermission("agent_studio.tools");
         toolService.archive(auth, id);
         return ApiResponse.ok();
     }

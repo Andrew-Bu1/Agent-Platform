@@ -117,8 +117,19 @@ public class AihubProxyController {
     // ── Usage logs ────────────────────────────────────────────────────────────
 
     @GetMapping("/model-usage-logs")
-    public ApiResponse<JsonNode> listUsageLogs(@AuthenticationPrincipal AuthContext auth) {
-        return ApiResponse.ok(aihubProxy.get("/v1/model-usage-logs"));
+    public ApiResponse<JsonNode> listUsageLogs(
+            @AuthenticationPrincipal AuthContext auth,
+            @RequestParam(name = "model_id",  required = false) String modelId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) Integer offset) {
+        String path = UriComponentsBuilder.fromPath("/v1/model-usage-logs")
+                .queryParamIfPresent("model_id", java.util.Optional.ofNullable(modelId))
+                .queryParamIfPresent("status",   java.util.Optional.ofNullable(status))
+                .queryParamIfPresent("limit",    java.util.Optional.ofNullable(limit))
+                .queryParamIfPresent("offset",   java.util.Optional.ofNullable(offset))
+                .build().toUriString();
+        return ApiResponse.ok(aihubProxy.get(path));
     }
 
     // ── Platform analytics ────────────────────────────────────────────────────

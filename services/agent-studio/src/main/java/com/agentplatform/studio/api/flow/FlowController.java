@@ -60,12 +60,14 @@ public class FlowController {
     public ApiResponse<FlowDto> update(@AuthenticationPrincipal AuthContext auth,
                                        @PathVariable UUID id,
                                        @RequestBody UpdateFlowRequest req) {
+        auth.requirePermission("agent_studio.flows");
         return ApiResponse.ok(FlowDto.from(
                 flowService.update(auth, id, req.getName(), req.getDescription(), req.getStatus())));
     }
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> archive(@AuthenticationPrincipal AuthContext auth, @PathVariable UUID id) {
+        auth.requirePermission("agent_studio.flows");
         flowService.archive(auth, id);
         return ApiResponse.ok();
     }

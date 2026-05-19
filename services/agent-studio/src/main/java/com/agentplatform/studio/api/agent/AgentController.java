@@ -67,6 +67,7 @@ public class AgentController {
     public ApiResponse<AgentDto> update(@AuthenticationPrincipal AuthContext auth,
                                         @PathVariable UUID id,
                                         @RequestBody UpdateAgentRequest req) {
+        auth.requirePermission("agent_studio.agents");
         var agent = agentService.update(auth, id,
                 req.getName(),
                 req.getDescription(),
@@ -80,6 +81,7 @@ public class AgentController {
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> archive(@AuthenticationPrincipal AuthContext auth, @PathVariable UUID id) {
+        auth.requirePermission("agent_studio.agents");
         agentService.archive(auth, id);
         return ApiResponse.ok();
     }
