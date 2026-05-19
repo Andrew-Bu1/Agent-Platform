@@ -1,6 +1,6 @@
 # Frontend Integration Guide
 
-**Last updated:** 2026-05-15
+**Last updated:** 2026-05-19
 
 This guide explains how the **Agent Studio Web** frontend (React/Vite, `services/agent-studio-web/`) should talk to the backend. The backend is fully implemented and ready for the frontend to connect.
 
@@ -313,13 +313,34 @@ The FE `NodeKind` type and the backend `GraphNode.Type` string must always stay 
 |---|---|---|
 | `start` | Orchestrator inline | `{}` |
 | `end` | Orchestrator inline | `{}` |
-| `agent` | Agent Worker | `{ agentId, modelId?, maxIterations? }` |
-| `agent_team` | Agent Worker | `{ agentId, entryAgentId, exitAgentId?, memberAgentIds?, maxIterations? }` — supervisor-handoff only; no `teamType` |
+| `agent` | Agent Worker | `{ agentId, modelId?, maxIterations?, memory? }` — `memory` overrides the agent-level default; see memory config below |
+| `agent_team` | Agent Worker | `{ agentId, entryAgentId, exitAgentId?, memberAgentIds?, maxIterations?, memory? }` — supervisor-handoff only; `memory` applies to supervisor only |
 | `if_else` | Orchestrator inline | `{ ifExpression }` |
 | `human_review` | Agent Worker | `{}` |
 | `router` | Orchestrator inline | `{ routes: [{label, handle}] }` |
 | `parallel` | Orchestrator inline | `{ branchCount }` |
 | `aggregator` | Agent Worker | `{ agentId, strategy? }` |
+
+#### Memory config shape (`memory?`)
+
+```json
+{
+  "memory_strategy": "last_n | summarize | none",
+  "memory_last_n": 20,
+  "memory_summarize_threshold": 40,
+  "memory_summarize_model": "gpt-4o-mini"
+}
+```
+
+Resolution priority: **node `data.memory`** → **agent entity `definition.memory`** → default `{strategy:"last_n", last_n:20}`.
+
+| Strategy | Behaviour |
+|---|---|
+| `last_n` | Load the most recent `memory_last_n` messages before each run (default window: 20). |
+| `summarize` | Keep a rolling `role=summary` message in the thread. Summarize when unsummarized tail exceeds `memory_summarize_threshold` (default: 40). Summarizer model defaults to the agent's own model. |
+| `none` | Skip all thread history — agent is stateless per run. |
+
+Full field reference: [graph_json.md § Memory Configuration](../../agent_layer/graph_json.md)
 
 > **`agentId` is camelCase.** The orchestrator model and Go worker both use json tag `"agentId"` to match this. Never use `agent_id` in `data` objects.
 

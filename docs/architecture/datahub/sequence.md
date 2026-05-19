@@ -25,7 +25,10 @@ Uniqueness is enforced at the `(tenant_id, workspace_id, name)` level — two wo
 
 A **document** is a single uploaded file associated with a datasource. It carries the file's storage path in MinIO, a SHA-256 content hash for deduplication, and arbitrary JSON metadata for downstream use.
 
-- **Upload (`multipart/form-data`)** — the handler reads the file bytes (hard cap: 100 MB; returns `413` if exceeded) from the form, computes a SHA-256 hash, checks for an existing document with the same hash in the same datasource (`FindByHash`), and rejects with `409 Conflict` if a duplicate is found. On success, the file is uploaded to MinIO at path `<datasource_id>/<document_id>/<filename>` (document ID in the path prevents same-named files from overwriting each other) and the document record is persisted to `documents`. `created_by_user_id` is set from the JWT `sub` claim for user tokens; `NULL` for service-client tokens.
+- **Upload (`multipart/form-data`)** — the handler reads the file bytes (hard cap: 100 MB; returns `413` if exceeded) from the form, computes a SHA-256 hash, then proceeds through the following service-layer checks in order:
+  1. **Datasource ownership** — `DatasourceRepository.GetByID(datasource_id, tenant_id, workspace_id)` is called first. If the datasource does not belong to the caller's tenant/workspace, the upload is rejected with `404` before any file data is processed.
+  2. **Deduplication** — checks for an existing document with the same hash in the same datasource (`FindByHash`); rejects with `409 Conflict` if found.
+  3. On success, the file is uploaded to MinIO at path `<datasource_id>/<document_id>/<filename>` (document ID in the path prevents same-named files from overwriting each other) and the document record is persisted to `documents`. `created_by_user_id` is set from the JWT `sub` claim for user tokens; `NULL` for service-client tokens.
 - **List by datasource** — returns all documents belonging to a given datasource within the caller's tenant/workspace scope.
 - **Get by ID** — retrieves a single document record.
 - **Update** — allows modifying the `storage_path` (e.g., after a file migration) or `metadata` JSON.

@@ -299,7 +299,7 @@ Resumes a run paused at a `human_review` node.
 | `parallel` | Orchestrator (inline) | Fires all outgoing edges simultaneously; completes immediately |
 | `aggregator` | Agent Worker | Waits for all incoming parallel branches; receives merged input keyed by source node ID |
 | `agent` | Agent Worker | Runs a ReAct loop via AIHub; config: `{ agentId, modelId?, maxIterations? }` |
-| `agent_team` | Agent Worker | Supervisor-handoff team; the supervisor LLM decides at runtime which member agent to delegate to; config: `{ agentId (supervisor), memberAgentIds, exitAgentId?, maxIterations? }` |
+| `agent_team` | Agent Worker | Supervisor-handoff team; worker injects a `delegate_to_agent` tool listing members by name; supervisor delegates via tool calls, each triggering a full member ReAct loop; config: `{ agentId (supervisor), memberAgentIds, exitAgentId?, maxIterations? }` |
 | `human_review` | Agent Worker | Pauses run; publishes `HumanReviewRequested`; resumes on `POST /runs/{id}/resume` |
 
 See [graph_json.md](./graph_json.md) for the full node schema and `data` field reference.

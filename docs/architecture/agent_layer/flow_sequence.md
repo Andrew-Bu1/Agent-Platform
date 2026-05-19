@@ -54,7 +54,7 @@ sequenceDiagram
     end
 
     Note over WK: Stream ends — assemble final message, check for tool calls
-    WK->>Redis: RPUSH agent:queue:event → NodeResult{run_id, node_run_id, status="completed", output_json}
+    WK->>Redis: RPUSH agent:queue:event → NodeResult{run_id, node_run_id, tenant_id, status="completed", output_json}
 
     Note over OR: Dispatcher.advance — loads run+graph+state from DB, creates short-lived Engine, calls Advance()
     OR->>PG: UPDATE node_runs SET status='completed', output_json=$out
@@ -92,13 +92,13 @@ sequenceDiagram
     OR-->>C: event: NodeStarted (node-A)
 
     Redis-->>WK: NodeJob (node-A)
-    WK-->>Redis: NodeResult (node-A, completed)
+    WK-->>Redis: NodeResult (node-A, completed, tenant_id)
 
     OR->>Redis: RPUSH → NodeJob for node-B
     OR-->>C: event: NodeCompleted (node-A)<br/>event: NodeStarted (node-B)
 
     Redis-->>WK: NodeJob (node-B)
-    WK-->>Redis: NodeResult (node-B, completed)
+    WK-->>Redis: NodeResult (node-B, completed, tenant_id)
 
     Note over OR: Dispatcher.advance loads state from DB for each result
     OR-->>C: event: NodeCompleted (node-B)<br/>event: NodeCompleted (end node)<br/>event: RunCompleted
@@ -139,6 +139,14 @@ sequenceDiagram
 
 The `agent_team` node is dispatched to the **Agent Worker** as a single job. The worker handles supervisor/member coordination internally. From the orchestrator's perspective it behaves identically to an `agent` node — one `NodeJob` in, one `NodeResult` out.
 
+### Supervisor-handoff loop
+
+The worker injects a synthetic `delegate_to_agent` tool into the supervisor's tool list. The tool's schema contains an `agent_name` enum listing every member agent by name. When the supervisor calls `delegate_to_agent`, the worker runs the named member's full ReAct loop (with its own tools) and returns the output as the tool result. The supervisor can delegate multiple times before producing a final reply.
+
+**Final output resolution:**
+- If `exitAgentId` is set and the last agent that ran was the exit agent → that agent's output is returned.
+- Otherwise → the supervisor's final text reply is returned.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -147,18 +155,52 @@ sequenceDiagram
     participant WK as Agent Worker
     participant AIH as AIHub
 
-    OR->>Redis: RPUSH → NodeJob{node_type:"agent_team", node_config:{agentId, memberAgentIds, ...}}
+    OR->>Redis: RPUSH → NodeJob{node_type:"agent_team", node_config:{agentId, memberAgentIds, exitAgentId, ...}}
     OR-->>C: event: NodeStarted {node_id: "team-1"}
 
     Redis-->>WK: NodeJob
-    WK->>AIH: Supervisor ReAct loop (coordinates member agents)
-    WK-->>Redis: NodeResult{status:"completed", output_json}
+    Note over WK: load supervisor + member agents from DB
+
+    WK-->>C: event: AgentStarted {agent_id: supervisor-id, role: "supervisor"}
+
+    loop Supervisor ReAct iterations
+        WK->>AIH: ChatStream(supervisor, tools=[...own_tools, delegate_to_agent])
+        AIH-->>WK: assistant message
+
+        alt supervisor calls delegate_to_agent(agent_name, input)
+            WK-->>C: event: ToolCallStarted {tool: "delegate_to_agent"}
+            WK-->>C: event: AgentStarted {agent_id: member-id, role: "member"}
+
+            loop Member ReAct iterations
+                WK->>AIH: ChatStream(member, tools=[...member_tools])
+                AIH-->>WK: member assistant message / tool calls
+            end
+
+            Note over WK: member output → tool result for supervisor
+            WK-->>C: event: AgentCompleted (member)
+            WK-->>C: event: ToolCallCompleted {tool: "delegate_to_agent"}
+
+        else supervisor produces final reply (no tool calls)
+            WK-->>C: event: AgentCompleted (supervisor)
+            Note over WK: resolve output (exitAgentId or supervisor reply)
+            WK-->>Redis: NodeResult{tenant_id, status:"completed", output_json}
+        end
+    end
 
     OR-->>C: event: NodeCompleted {node_id: "team-1"}
     Note over OR: advanceFrom(team-1) → next node
 ```
 
-The `agentId` field in `node_config.data` must be the **supervisor** agent UUID. The supervisor's member agents are in `memberAgentIds`. The canvas form writes both `agentId` and `entryAgentId` to the same value when the supervisor is selected.
+### Config fields
+
+The `agentId` field in `node_config.data` must be the **supervisor** agent UUID. The canvas form writes both `agentId` and `entryAgentId` to the same value when the supervisor is selected.
+
+| Field | Required | Notes |
+|---|:---:|---|
+| `agentId` | ✓ | Supervisor agent UUID |
+| `memberAgentIds` | ✓ | Pool of agents the supervisor can delegate to |
+| `exitAgentId` | — | If set and that agent ran last, its output is returned instead of the supervisor's reply |
+| `maxIterations` | — | Max supervisor iterations (defaults to agent's own `max_iterations`, then global default of 10) |
 
 ---
 
@@ -247,6 +289,7 @@ POST /runs
 [N Dispatcher goroutines — any orchestrator instance]:
   BLPOP result queue
   → load run + graph + state from DB (GetByIDOnly)
+  → assert result.TenantID == run.TenantID          ← reject mismatched results
   → NewEngine(run, graph, state, repos...)
   → eng.Advance(ctx, result)       ← pure: mutates state, writes to DB, dispatches next jobs
   → discard engine (GC)
@@ -257,3 +300,15 @@ POST /runs
 - Multiple orchestrator replicas can process different run results simultaneously with no coordination.
 - `RunState` in `runs.state_json` (Postgres JSONB) is the single source of truth; it is updated on every state mutation.
 - `ResumeHumanReview` pushes a synthetic `NodeResult` directly onto the result queue instead of routing to an in-memory engine.
+
+### Tenant Isolation in the Queue Path
+
+Every `NodeResult` carries `tenant_id`. The field is stamped by the agent worker from the `NodeJob` it consumed (which in turn was stamped by the orchestrator from the originating run). The dispatcher validates this field before performing any state mutation:
+
+```
+result.TenantID ≠ run.TenantID  →  advance() returns error, result is dropped
+```
+
+A `NodeResult` pushed by a compromised worker or forged directly into Redis cannot advance a run belonging to a different tenant, because the mismatch is caught before the engine is created.
+
+All run `UPDATE` statements (`UpdateStatus`, `UpdateState`, `UpdateOutput`, `UpdateError`, `SetStarted`) include `AND tenant_id = $N` in their `WHERE` clause, providing a second layer of isolation at the database level.

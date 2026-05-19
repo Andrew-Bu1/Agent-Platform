@@ -1,6 +1,6 @@
 # Agent Layer — `graph_json` Schema
 
-**Last updated:** 2026-05-15
+**Last updated:** 2026-05-19
 
 `graph_json` is the serialised flow graph stored in `flow_versions.graph_json`.  
 It is written by the **Agent Studio Web** canvas (React/TypeScript) and parsed by the **Agent Orchestrator** engine (Go) at run-time.
@@ -84,9 +84,15 @@ Dispatched to the **Agent Worker**.
   "type": "agent",
   "label": "Researcher",
   "data": {
-    "agentId":       "uuid-of-agent",
-    "modelId":       "gpt-4o",
-    "maxIterations": 10
+    "agentId":        "uuid-of-agent",
+    "modelId":        "gpt-4o",
+    "maxIterations":  10,
+    "memory": {
+      "memory_strategy":            "last_n",
+      "memory_last_n":              30,
+      "memory_summarize_threshold": 40,
+      "memory_summarize_model":     "gpt-4o-mini"
+    }
   }
 }
 ```
@@ -95,9 +101,15 @@ Dispatched to the **Agent Worker**.
 |---|---|---|
 | `agentId` | `string` (UUID) | **Required.** Agent record to load from DB |
 | `modelId` | `string` | Optional override for the agent's default model |
-| `maxIterations` | `number` | Override the agent's default max ReAct iterations |
+| `maxIterations` | `number` | Override the agent's default max ReAct iterations (hard ceiling: 100) |
+| `memory.memory_strategy` | `string` | `"last_n"` (default), `"none"`, or `"summarize"`. Overrides the agent-level default. |
+| `memory.memory_last_n` | `number` | Window size for `last_n`; defaults to `20` when unset or `0` |
+| `memory.memory_summarize_threshold` | `number` | For `summarize`: trigger summarization when unsummarized tail exceeds N; defaults to `40` |
+| `memory.memory_summarize_model` | `string` | For `summarize`: model used for the summarizer call; defaults to the agent's own model |
 
-The worker parses `data` into `NodeAgentConfig` (json tags: `agentId`, `maxIterations`, `timeoutSeconds`).
+The worker parses `data` into `NodeAgentConfig` (json tags: `agentId`, `maxIterations`, `timeoutSeconds`, `memory`).
+
+> **Iteration ceiling:** regardless of what `maxIterations` is set to in the node config or agent definition, the worker enforces a hard cap of **100 iterations** per agent execution. Values above 100 are silently clamped. This applies to plain `agent` nodes, `agent_team` supervisors, and member agents.
 
 ---
 
@@ -114,7 +126,11 @@ Dispatched to the **Agent Worker**. The supervisor agent uses LLM reasoning to d
     "entryAgentId":   "uuid-of-supervisor",
     "exitAgentId":    "uuid-of-final-agent",
     "memberAgentIds": ["uuid-A", "uuid-B"],
-    "maxIterations":  3
+    "maxIterations":  3,
+    "memory": {
+      "memory_strategy": "last_n",
+      "memory_last_n":   20
+    }
   }
 }
 ```
@@ -125,9 +141,21 @@ Dispatched to the **Agent Worker**. The supervisor agent uses LLM reasoning to d
 | `entryAgentId` | `string` (UUID) | Entry/supervisor agent — must equal `agentId` |
 | `exitAgentId` | `string` (UUID) | Agent whose output is returned to the parent flow (optional; defaults to supervisor's last reply) |
 | `memberAgentIds` | `string[]` | Pool of agents the supervisor can hand off to |
-| `maxIterations` | `number` | Max handoff iterations before the team is terminated |
+| `maxIterations` | `number` | Max handoff iterations before the team is terminated (hard ceiling: 100) |
+| `memory.memory_strategy` | `string` | Memory strategy applied to the **supervisor**. Member agents use their own agent-level config. |
+| `memory.memory_last_n` | `number` | Window size for the supervisor's `last_n` strategy |
+| `memory.memory_summarize_threshold` | `number` | For `summarize`: trigger threshold for the supervisor; defaults to `40` |
+| `memory.memory_summarize_model` | `string` | For `summarize`: summarizer model for the supervisor; defaults to supervisor's model |
 
 > **Why no `teamType`?** Earlier designs included `graph`, `handoff`, and `hybrid` modes. `graph` and `hybrid` were redundant with the outer flow canvas — any deterministic routing pattern (sequential, parallel, loops) can be expressed there. `agent_team` now exclusively means supervisor-driven LLM handoff.
+
+**Runtime: `delegate_to_agent` synthetic tool**
+
+The Agent Worker automatically injects a `delegate_to_agent` tool into the supervisor's tool list at runtime — it does not appear in the flow graph JSON. Its schema contains an `agent_name` enum listing each member agent by name and an `input` string. When the supervisor calls this tool, the worker runs the named member's full ReAct loop and returns the member's output as the tool result. The supervisor may delegate multiple times before producing its final reply.
+
+Output returned to the parent flow:
+- `exitAgentId` set and was the last agent to run → that agent's output.
+- Otherwise → the supervisor's final text reply.
 
 ---
 
@@ -254,6 +282,70 @@ Resume body:
 ```
 
 The `output` becomes the node's `output_json` and the input to the next node.
+
+---
+
+## Memory Configuration
+
+Conversation history loading is controlled by a `MemoryConfig` that can be set at two levels, resolved in priority order:
+
+```
+node data.memory  →  agent entity config.memory  →  default {strategy:"last_n", last_n:20}
+```
+
+### Strategies
+
+| `memory_strategy` | Behaviour |
+|---|---|
+| `"last_n"` | Load the **most recent `memory_last_n` messages** for the thread in chronological order. Default strategy. |
+| `"none"` | Skip thread history entirely — the agent receives only the system prompt and the current run input. Use for stateless/pure-function agents. |
+| `"summarize"` | Keep a **rolling summary** stored as a `role=summary` message directly in the `messages` table. On each run: load the latest summary + any messages added since; if the unsummarized tail exceeds `memory_summarize_threshold`, call the summarizer LLM, insert a new summary message, and clear the tail. The agent receives `[system prompt] + [system: summary text] + [tail messages] + [user input]`. |
+
+### Agent-level default (Agent page)
+
+Set in **Agent Studio → Agents → Edit agent → Memory section**. Stored inside `agents.definition` JSON:
+
+```json
+{
+  "max_iterations": 10,
+  "memory": {
+    "memory_strategy": "last_n",
+    "memory_last_n":   50
+  }
+}
+```
+
+This is the default used whenever no node-level override is present.
+
+### Node-level override (Canvas)
+
+Set in **Agent Studio → Flow canvas → click an `agent` or `agent_team` node → Configure tab → Memory section**. Stored inside `graph_json.nodes[id].data`:
+
+```json
+{
+  "agentId": "uuid-...",
+  "memory": {
+    "memory_strategy": "last_n",
+    "memory_last_n":   30
+  }
+}
+```
+
+For `agent_team` nodes this override applies to the **supervisor only**.
+
+### Resolution example
+
+| Level | `memory_strategy` | Result |
+|---|---|---|
+| Node override | `"none"` | History skipped regardless of agent default |
+| Node override | `"last_n"` | Most recent `memory_last_n` messages (default window: 20) |
+| Node override | `"summarize"` | Rolling summary; tail threshold from `memory_summarize_threshold` (default: 40) |
+| Node override absent, agent default set | — | Agent default used |
+| Both absent | — | `last_n` with window `20` |
+
+### `agent_team` member agents
+
+The `memory` field on an `agent_team` node applies only to the **supervisor**. Each member agent uses its own `agents.definition.memory` default with no node-level override path — the team node config does not propagate memory settings into member executions.
 
 ---
 

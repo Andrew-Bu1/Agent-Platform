@@ -235,6 +235,7 @@ Before any model-level check, AIHub verifies that the tenant has the relevant fe
 |---|---|
 | `POST /v1/chat` | `aihub.chat` |
 | `POST /v1/embed` | `aihub.embedding` |
+| `POST /v1/rerank` | `aihub.rerank` |
 
 `FeatureGuard` calls `GET {IAM_BASE_URL}/entitlements/features` with the caller's Bearer token and checks that the required key is present in the enabled set. Results are cached per `tenant_id` for **5 minutes**. If the feature is not enabled → 403.
 
@@ -258,7 +259,7 @@ This is a tenant-level on/off switch — it controls whether the tenant's plan i
 
 ### Pre-call inference checks (in order)
 
-1. **Feature enabled** — `FeatureGuard` checks that the tenant has `aihub.chat` / `aihub.embedding` enabled (see Layer 1 above).
+1. **Feature enabled** — `FeatureGuard` checks that the tenant has `aihub.chat` / `aihub.embedding` / `aihub.rerank` enabled (see Layer 1 above).
 2. **Entitlement exists and is allowed** — tenant must have an entitlement row for `(model_key, operation_type)` with `allowed=true`. Missing row or `allowed=false` → 403.
 3. **RPM limit** — Redis `INCR aihub:rpm:{tenant_id}:{model_key}:{op}` with 60 s TTL. Count is incremented *before* the call so in-flight requests count. If count exceeds limit → 429.
 4. **TPM limit** — reads current minute bucket from Redis. If at or above limit → 429.
@@ -290,7 +291,18 @@ Fields logged per call:
 
 Log writes are fire-and-forget — failures do not affect the API response.
 
-Usage logs can be queried via `GET /v1/model-usage-logs` scoped to the caller's `tenant_id` from the JWT.
+Usage logs can be queried via `GET /v1/model-usage-logs` (proxied through the BFF at `GET /api/v1/aihub/model-usage-logs`) scoped to the caller's `tenant_id` from the JWT.
+
+**Query params:**
+
+| Param | Type | Required | Description |
+|---|---|:---:|---|
+| `model_id` | UUID | — | Filter to a specific model config. |
+| `status` | string | — | Filter by result status: `success`, `failed`, or `rejected`. |
+| `limit` | int | — | Max records to return (default determined by AIHub, typically 50). |
+| `offset` | int | — | Pagination offset. |
+
+All params are optional. Omitting them returns all logs for the caller's tenant.
 
 ---
 

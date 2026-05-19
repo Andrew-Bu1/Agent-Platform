@@ -1,6 +1,6 @@
 # Agent Studio — Architecture Overview
 
-**Last updated:** 2026-05-10  
+**Last updated:** 2026-05-19  
 **Status:** Backend complete (all phases implemented)
 
 ---
@@ -24,7 +24,7 @@ It does **not** run agents or execute flows — that is the Orchestrator's job.
 | Runtime | Java 17, Spring Boot 3.4.1 |
 | Auth | Stateless JWT (RS256 via `libs/java/common`) |
 | DB | PostgreSQL (Flyway migrations, Spring Data JPA) |
-| HTTP Client | Spring `RestClient` (for proxying) |
+| HTTP Client | Spring `RestClient` + `JdkClientHttpRequestFactory` (HTTP/1.1, for proxying) |
 | SSE | Spring `SseEmitter` + `@Async` thread pool |
 | Build | Maven 3 (reactor parent `pom.xml`) |
 
@@ -42,6 +42,8 @@ All Flyway migrations live in `services/agent-studio/src/main/resources/db/migra
 | `V4__tool_type_expand.sql` | Expands `tool_type` CHECK constraint with additional types |
 
 > **Note on `messages` table:** `messages` has `node_run_id UUID NULL` and `metadata_json JSONB` columns. The agent-worker `MessageRepository` selects and inserts both of these fields. Do not omit them when extending message queries.
+> 
+> The `role` column accepts: `user`, `assistant`, `system`, `tool`, and `summary`. The `summary` role is written by the agent-worker when the `summarize` memory strategy triggers — it stores a compressed digest of prior conversation turns. No schema migration is needed as the column is `VARCHAR(50)` with no check constraint.
 
 ### Key Tables
 
@@ -54,7 +56,7 @@ flow_versions   — immutable published snapshot (graph_json + settings_json)
 threads         — conversation/session boundary (links runs together)
 runs            — one execution of one flow_version
 node_runs       — per-node execution record within a run
-messages        — conversation messages (node_run_id + metadata_json nullable)
+messages        — conversation messages; role: user|assistant|system|tool|summary (node_run_id + metadata_json nullable)
 run_events      — persisted SSE events for reconnect/replay
 human_review_tasks — first-class human review/approval task
 ```
@@ -118,6 +120,8 @@ See [graph_json.md](../../agent_layer/graph_json.md) for the complete node schem
 ## BFF Proxy Layer
 
 Agent Studio proxies all calls from the frontend to downstream services, forwarding the original bearer token. This means the frontend only talks to one service.
+
+> **HTTP/1.1 constraint:** All five `RestClient` beans (`aihubClient`, `datahubClient`, `iamClient`, `iamPublicClient`, `orchestratorClient`) are configured with `JdkClientHttpRequestFactory(HttpClient.HTTP_1_1)`. Spring Boot 3.4's default `HttpClient` negotiates HTTP/2, which sends an `Upgrade: h2c` header on plain HTTP connections. Neither uvicorn (AIHub) nor the Go `net/http` servers (DataHub, Orchestrator) support h2c cleartext upgrade, causing spurious log warnings. Pinning to HTTP/1.1 prevents the upgrade attempt; SSE streaming is unaffected because it relies on chunked transfer encoding, a standard HTTP/1.1 feature.
 
 ```
 Browser / Agent Studio Web
@@ -201,14 +205,17 @@ Tenant and workspace member invite payloads are `{ email, roleKey }`. Member mut
 | `GET` | `/api/v1/aihub/models` | `GET /v1/models` |
 | `POST` | `/api/v1/aihub/models` | `POST /v1/models` |
 | `GET` | `/api/v1/aihub/models/{id}` | `GET /v1/models/{id}` |
-| `PUT` | `/api/v1/aihub/models/{id}` | `PUT /v1/models/{id}` |
+| `PATCH` | `/api/v1/aihub/models/{id}` | `PATCH /v1/models/{id}` |
 | `DELETE` | `/api/v1/aihub/models/{id}` | `DELETE /v1/models/{id}` |
 | `GET` | `/api/v1/aihub/providers` | `GET /v1/providers` |
 | `POST` | `/api/v1/aihub/providers` | `POST /v1/providers` |
 | `GET` | `/api/v1/aihub/providers/{id}` | `GET /v1/providers/{id}` |
-| `PUT` | `/api/v1/aihub/providers/{id}` | `PUT /v1/providers/{id}` |
+| `PATCH` | `/api/v1/aihub/providers/{id}` | `PATCH /v1/providers/{id}` |
 | `DELETE` | `/api/v1/aihub/providers/{id}` | `DELETE /v1/providers/{id}` |
 | `GET` | `/api/v1/aihub/model-usage-logs` | `GET /v1/model-usage-logs` |
+| `POST` | `/api/v1/aihub/chat` | `POST /v1/chat` |
+| `POST` | `/api/v1/aihub/chat/stream` | `POST /v1/chat` (SSE stream) |
+| `GET` | `/api/v1/aihub/platform/analytics/usage` | `GET /v1/platform/analytics/usage` |
 
 ### DataHub Proxy (`/api/v1/datahub/**`)
 
