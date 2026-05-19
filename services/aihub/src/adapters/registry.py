@@ -30,6 +30,19 @@ class ProviderAdapterRegistry:
             raise HTTPException(status_code=400, detail=f"Provider '{provider_key}' does not support reranking")
         return adapter
 
+    def refresh_provider(self, row: object, encryption_key: str | None) -> None:
+        """Rebuild the adapter for a single provider from a freshly-fetched DB row.
+
+        Called automatically after a 401 so the next call (or a retry) uses the
+        latest API key without requiring a service restart.
+        """
+        key: str = row.provider_key  # type: ignore[attr-defined]
+        adapter_type: str = row.adapter_type  # type: ignore[attr-defined]
+        if adapter_type == "openai_compatible":
+            encrypted = (row.config_json or {}).get("api_key", "")  # type: ignore[attr-defined]
+            api_key = decrypt(encryption_key, encrypted) if encrypted and encryption_key else ""
+            self._chat[key] = OpenAICompatibleChatAdapter(row.base_url or "", api_key)  # type: ignore[attr-defined]
+
 
 def build_registry(
     provider_rows: list,

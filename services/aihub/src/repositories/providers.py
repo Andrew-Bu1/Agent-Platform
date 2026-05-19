@@ -65,6 +65,25 @@ class ProvidersRepository:
             for r in rows
         ]
 
+    async def get_by_key(self, provider_key: str) -> "ProviderRecord | None":
+        rows = await self._db.fetch(
+            "SELECT id, provider_key, display_name, base_url, adapter_type, config_json, is_active "
+            "FROM providers WHERE provider_key = $1 AND is_active = TRUE",
+            provider_key,
+        )
+        if not rows:
+            return None
+        r = rows[0]
+        return ProviderRecord(
+            id=r["id"],
+            provider_key=r["provider_key"],
+            display_name=r["display_name"],
+            base_url=r["base_url"],
+            adapter_type=r["adapter_type"],
+            config_json=_parse_config(r["config_json"]),
+            is_active=r["is_active"],
+        )
+
     async def get_id_by_key(self, provider_key: str) -> UUID | None:
         rows = await self._db.fetch(
             "SELECT id FROM providers WHERE provider_key = $1 AND is_active = TRUE",

@@ -3,6 +3,7 @@ import time
 from decimal import Decimal
 from typing import AsyncGenerator
 
+import httpx
 from fastapi import HTTPException
 
 from src.adapters.registry import ProviderAdapterRegistry
@@ -13,6 +14,7 @@ from src.models.model_config import ModelConfig, ModelUsageLog
 from src.models.rerank import RerankResponse
 from src.repositories.model_config import ModelConfigRepository
 from src.repositories.model_usage_log import ModelUsageLogRepository
+from src.repositories.providers import ProvidersRepository
 from src.services.entitlement import EntitlementGuard
 
 
@@ -23,11 +25,23 @@ class ServiceRouter:
         model_usage_log_repo: ModelUsageLogRepository,
         entitlement_guard: EntitlementGuard,
         registry: ProviderAdapterRegistry,
+        providers_repo: ProvidersRepository | None = None,
+        encryption_key: str | None = None,
     ) -> None:
         self._model_config_repo = model_config_repo
         self._model_usage_log_repo = model_usage_log_repo
         self._entitlement_guard = entitlement_guard
         self._registry = registry
+        self._providers_repo = providers_repo
+        self._encryption_key = encryption_key
+
+    async def _refresh_adapter(self, provider_key: str) -> None:
+        """Re-fetch provider row from DB and rebuild its adapter in-place."""
+        if self._providers_repo is None:
+            return
+        row = await self._providers_repo.get_by_key(provider_key)
+        if row:
+            self._registry.refresh_provider(row, self._encryption_key)
 
     async def _get_model(self, model_key: str, operation_type: str) -> ModelConfig:
         config = await self._model_config_repo.get_by_model_key_and_operation(
@@ -105,6 +119,31 @@ class ServiceRouter:
         start = time.monotonic()
         try:
             result = await adapter.chat(config, messages, tools=tools, tool_choice=tool_choice, temperature=temperature, top_p=top_p, top_k=top_k, max_tokens=max_tokens)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                # Key may have been set/rotated after startup — refresh from DB and retry once.
+                await self._refresh_adapter(config.provider_key)
+                adapter = self._registry.get_chat(config.provider_key)
+                try:
+                    result = await adapter.chat(config, messages, tools=tools, tool_choice=tool_choice, temperature=temperature, top_p=top_p, top_k=top_k, max_tokens=max_tokens)
+                except Exception as retry_exc:
+                    latency_ms = int((time.monotonic() - start) * 1000)
+                    await self._log_usage(ModelUsageLog(
+                        **self._base_log(config, ctx),
+                        latency_ms=latency_ms,
+                        status="failed",
+                        error_message=str(retry_exc),
+                    ))
+                    raise
+            else:
+                latency_ms = int((time.monotonic() - start) * 1000)
+                await self._log_usage(ModelUsageLog(
+                    **self._base_log(config, ctx),
+                    latency_ms=latency_ms,
+                    status="failed",
+                    error_message=str(exc),
+                ))
+                raise
         except Exception as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
             await self._log_usage(ModelUsageLog(
@@ -193,6 +232,9 @@ class ServiceRouter:
         except Exception as exc:
             stream_failed = True
             error_message = str(exc)
+            # On 401 refresh the adapter so the next request picks up the latest key.
+            if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 401:
+                await self._refresh_adapter(config.provider_key)
             raise
         finally:
             latency_ms = int((time.monotonic() - start) * 1000)

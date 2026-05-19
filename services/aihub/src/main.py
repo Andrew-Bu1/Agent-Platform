@@ -68,6 +68,8 @@ async def lifespan(app: FastAPI):
         model_usage_log_repo=model_usage_log_repo,
         entitlement_guard=entitlement_guard,
         registry=registry,
+        providers_repo=providers_repo,
+        encryption_key=settings.provider.encryption_key,
     )
 
     yield
