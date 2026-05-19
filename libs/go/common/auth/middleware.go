@@ -469,7 +469,11 @@ func writeAuthError(w http.ResponseWriter, status int, message string) {
 // TenantID extracts the tenant UUID from ctx. Panics if not present (should
 // only be called after Middleware has run).
 func TenantID(ctx context.Context) uuid.UUID {
-	return ctx.Value(tenantIDKey).(uuid.UUID)
+	v := ctx.Value(tenantIDKey)
+	if v == nil {
+		panic("auth.TenantID: called without auth middleware in chain")
+	}
+	return v.(uuid.UUID)
 }
 
 // WorkspaceID extracts the workspace UUID from ctx.
