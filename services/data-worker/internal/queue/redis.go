@@ -94,6 +94,9 @@ func (q *Client) DLQLen(ctx context.Context, dlqKey string) (int64, error) {
 
 // DLQList returns up to limit entries from the dead-letter queue without removing them.
 func (q *Client) DLQList(ctx context.Context, dlqKey string, limit int64) ([]DLQEntry, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
 	raws, err := q.client.LRange(ctx, dlqKey, 0, limit-1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("queue.DLQList: %w", err)
