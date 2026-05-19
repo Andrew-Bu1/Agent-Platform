@@ -35,10 +35,6 @@ type Options struct {
 	// JWKSURL points at IAM's public key set endpoint.
 	JWKSURL string
 
-	// TrustedHeaders keeps compatibility for deployments that terminate auth at
-	// a gateway and forward X-Tenant-ID/X-Workspace-ID. It is disabled by default.
-	TrustedHeaders bool
-
 	// Issuer is the expected value of the JWT iss claim. Empty disables the check.
 	Issuer string
 
@@ -47,21 +43,18 @@ type Options struct {
 }
 
 // Middleware verifies an IAM-issued Bearer JWT and injects tenant/workspace
-// identifiers into the request context. Set AUTH_TRUSTED_HEADERS=true only when
-// a trusted gateway has already verified the JWT and strips spoofed headers.
+// identifiers into the request context.
 //
 // Environment:
 //   - IAM_JWKS_URL: full JWKS endpoint URL
 //   - IAM_URL or IAM_BASE_URL: IAM base URL used to build /.well-known/jwks.json
-//   - AUTH_TRUSTED_HEADERS=true: opt into legacy X-Tenant-ID/X-Workspace-ID mode
 //
-// Paths listed in exemptPaths are allowed through without headers.
+// Paths listed in exemptPaths are allowed through without a token.
 func Middleware(next http.Handler, exemptPaths ...string) http.Handler {
 	return NewMiddleware(next, Options{
-		JWKSURL:        jwksURLFromEnv(),
-		TrustedHeaders: strings.EqualFold(os.Getenv("AUTH_TRUSTED_HEADERS"), "true"),
-		Issuer:         os.Getenv("JWT_ISSUER"),
-		Audience:       os.Getenv("JWT_AUDIENCE"),
+		JWKSURL:  jwksURLFromEnv(),
+		Issuer:   os.Getenv("JWT_ISSUER"),
+		Audience: os.Getenv("JWT_AUDIENCE"),
 	}, exemptPaths...)
 }
 
@@ -79,15 +72,6 @@ func NewMiddleware(next http.Handler, opts Options, exemptPaths ...string) http.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := exempt[r.URL.Path]; ok {
 			next.ServeHTTP(w, r)
-			return
-		}
-
-		if opts.TrustedHeaders {
-			ctx, ok := contextFromTrustedHeaders(w, r)
-			if !ok {
-				return
-			}
-			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -134,32 +118,6 @@ func NewMiddleware(next http.Handler, opts Options, exemptPaths ...string) http.
 		ctx = context.WithValue(ctx, permissionsKey, stringSliceClaim(claims, "permissions"))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-func contextFromTrustedHeaders(w http.ResponseWriter, r *http.Request) (context.Context, bool) {
-	tenantIDStr := r.Header.Get("X-Tenant-ID")
-	workspaceIDStr := r.Header.Get("X-Workspace-ID")
-
-	if tenantIDStr == "" || workspaceIDStr == "" {
-		writeAuthError(w, http.StatusUnauthorized, "missing X-Tenant-ID or X-Workspace-ID header")
-		return nil, false
-	}
-
-	tenantID, err := uuid.Parse(tenantIDStr)
-	if err != nil {
-		writeAuthError(w, http.StatusBadRequest, "invalid X-Tenant-ID")
-		return nil, false
-	}
-
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		writeAuthError(w, http.StatusBadRequest, "invalid X-Workspace-ID")
-		return nil, false
-	}
-
-	ctx := context.WithValue(r.Context(), tenantIDKey, tenantID)
-	ctx = context.WithValue(ctx, workspaceIDKey, workspaceID)
-	return ctx, true
 }
 
 // minJWKSRefreshInterval caps how often we hit IAM's JWKS endpoint to prevent
