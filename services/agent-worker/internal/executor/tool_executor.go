@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/Andrew-Bu1/Agent-Platform/services/agent-worker/internal/model"
@@ -52,6 +54,9 @@ func (e *ToolExecutor) executeHTTP(ctx context.Context, tool *model.Tool, argume
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("http tool %s has no url in config", tool.ID)
 	}
+	if err := validateToolURL(cfg.URL); err != nil {
+		return nil, fmt.Errorf("http tool %s invalid url: %w", tool.ID, err)
+	}
 
 	method := cfg.Method
 	if method == "" {
@@ -95,4 +100,23 @@ func (e *ToolExecutor) executeHTTP(ctx context.Context, tool *model.Tool, argume
 	}
 	wrapped, _ := json.Marshal(map[string]string{"result": string(respBody)})
 	return json.RawMessage(wrapped), nil
+}
+
+// validateToolURL rejects non-HTTP schemes and private/loopback destinations to
+// prevent SSRF via workspace-admin-supplied tool configs.
+func validateToolURL(raw string) error {
+	u, err := url.ParseRequestURI(raw)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("scheme %q not allowed; use http or https", u.Scheme)
+	}
+	host := u.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+			return fmt.Errorf("target IP %s is not routable from this host", ip)
+		}
+	}
+	return nil
 }

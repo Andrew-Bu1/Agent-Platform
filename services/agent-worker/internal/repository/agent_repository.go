@@ -56,3 +56,48 @@ func (r *AgentRepository) GetByID(ctx context.Context, id, tenantID, workspaceID
 
 	return &a, nil
 }
+
+// GetByIDs fetches multiple agents in one query. Preserves input order via a
+// map keyed by ID so callers can resolve member agents for agent_team nodes.
+func (r *AgentRepository) GetByIDs(ctx context.Context, ids []uuid.UUID, tenantID, workspaceID uuid.UUID) (map[uuid.UUID]*model.Agent, error) {
+	if len(ids) == 0 {
+		return map[uuid.UUID]*model.Agent{}, nil
+	}
+	const q = `
+		SELECT id, tenant_id, workspace_id, name, definition_json, created_at
+		FROM agents
+		WHERE id = ANY($1)
+		  AND tenant_id = $2
+		  AND workspace_id = $3
+		  AND status != 'archived'
+	`
+	rows, err := r.pool.Query(ctx, q, ids, tenantID, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("GetByIDs agents: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[uuid.UUID]*model.Agent, len(ids))
+	for rows.Next() {
+		var a model.Agent
+		var defJSON []byte
+		if err := rows.Scan(&a.ID, &a.TenantID, &a.WorkspaceID, &a.Name, &defJSON, &a.CreatedAt); err != nil {
+			return nil, fmt.Errorf("GetByIDs scan: %w", err)
+		}
+		var def struct {
+			ModelID      string          `json:"model_id"`
+			SystemPrompt string          `json:"system_prompt"`
+			Config       json.RawMessage `json:"config"`
+			ToolIDs      []uuid.UUID     `json:"tool_ids"`
+		}
+		if len(defJSON) > 0 {
+			_ = json.Unmarshal(defJSON, &def)
+		}
+		a.ModelID = def.ModelID
+		a.SystemPrompt = def.SystemPrompt
+		a.Config = def.Config
+		a.ToolIDs = def.ToolIDs
+		out[a.ID] = &a
+	}
+	return out, rows.Err()
+}

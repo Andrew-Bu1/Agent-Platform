@@ -105,6 +105,7 @@ func (w *NodeWorker) execute(ctx context.Context, workerID int, job model.NodeJo
 	result := model.NodeResult{
 		RunID:     job.RunID,
 		NodeRunID: job.NodeRunID,
+		TenantID:  job.TenantID,
 		NodeID:    job.NodeID,
 		Events:    events,
 	}

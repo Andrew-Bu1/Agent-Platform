@@ -25,6 +25,7 @@ type NodeJob struct {
 type NodeResult struct {
 	RunID       uuid.UUID       `json:"run_id"`
 	NodeRunID   uuid.UUID       `json:"node_run_id"`
+	TenantID    uuid.UUID       `json:"tenant_id"`
 	NodeID      string          `json:"node_id"`
 	Status      string          `json:"status"` // "completed" | "failed"
 	OutputJSON  json.RawMessage `json:"output,omitempty"`
@@ -80,7 +81,7 @@ type Message struct {
 	ThreadID     uuid.UUID       `json:"thread_id"`
 	RunID        *uuid.UUID      `json:"run_id,omitempty"`
 	NodeRunID    *uuid.UUID      `json:"node_run_id,omitempty"`
-	Role         string          `json:"role"` // "user" | "assistant" | "tool" | "system"
+	Role         string          `json:"role"` // "user" | "assistant" | "tool" | "system" | "summary"
 	ContentJSON  json.RawMessage `json:"content"`
 	MetadataJSON json.RawMessage `json:"metadata"`
 	CreatedAt    time.Time       `json:"created_at"`
@@ -117,10 +118,28 @@ type NodeAgentConfig struct {
 	AgentSnapshot  json.RawMessage `json:"agentSnapshot,omitempty"`
 	MaxIterations  int             `json:"maxIterations"`
 	TimeoutSeconds int             `json:"timeoutSeconds"`
+	Memory         MemoryConfig    `json:"memory"`
+	// agent_team fields (ignored for plain agent nodes)
+	MemberAgentIDs []uuid.UUID `json:"memberAgentIds,omitempty"`
+	ExitAgentID    uuid.UUID   `json:"exitAgentId,omitempty"`
+}
+
+// MemoryConfig controls how an agent node loads conversation history.
+// Strategy values:
+//   - "none"      — no thread history; agent is stateless for this run.
+//   - "last_n"    — load the most recent LastN messages (default strategy).
+//   - "summarize" — keep a rolling summary stored as a 'summary' message in the
+//                   thread; inject summary + unsummarized tail on each run.
+type MemoryConfig struct {
+	Strategy           string `json:"memory_strategy"`            // "none" | "last_n" | "summarize"
+	LastN              int    `json:"memory_last_n"`              // window size for last_n; defaults to 20
+	SummarizeThreshold int    `json:"memory_summarize_threshold"` // summarize when tail > N; defaults to 40
+	SummarizeModel     string `json:"memory_summarize_model"`     // model for summarizer call; defaults to agent model
 }
 
 // AgentConfig holds optional agent-level settings parsed from Agent.Config.
 type AgentConfig struct {
-	MaxIterations  int `json:"max_iterations"`
-	TimeoutSeconds int `json:"timeout_seconds"`
+	MaxIterations  int          `json:"max_iterations"`
+	TimeoutSeconds int          `json:"timeout_seconds"`
+	Memory         MemoryConfig `json:"memory"`
 }

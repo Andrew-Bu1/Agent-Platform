@@ -56,6 +56,113 @@ func (r *MessageRepository) GetByThreadID(ctx context.Context, threadID, tenantI
 	return msgs, nil
 }
 
+// GetLastNByThreadID returns the N most recent messages for a thread in
+// chronological (ascending) order. Use this for the "last_n" memory strategy.
+func (r *MessageRepository) GetLastNByThreadID(ctx context.Context, threadID, tenantID, workspaceID uuid.UUID, n int) ([]*model.Message, error) {
+	const q = `
+		SELECT id, tenant_id, workspace_id, thread_id, run_id, node_run_id,
+		       role, content_json, metadata_json, created_at
+		FROM (
+			SELECT id, tenant_id, workspace_id, thread_id, run_id, node_run_id,
+			       role, content_json, metadata_json, created_at
+			FROM messages
+			WHERE thread_id = $1
+			  AND tenant_id = $2
+			  AND workspace_id = $3
+			ORDER BY created_at DESC
+			LIMIT $4
+		) recent
+		ORDER BY created_at ASC
+	`
+	rows, err := r.pool.Query(ctx, q, threadID, tenantID, workspaceID, n)
+	if err != nil {
+		return nil, fmt.Errorf("GetLastNByThreadID: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []*model.Message
+	for rows.Next() {
+		var m model.Message
+		if err := rows.Scan(
+			&m.ID, &m.TenantID, &m.WorkspaceID,
+			&m.ThreadID, &m.RunID, &m.NodeRunID,
+			&m.Role, &m.ContentJSON, &m.MetadataJSON, &m.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan message: %w", err)
+		}
+		msgs = append(msgs, &m)
+	}
+	return msgs, nil
+}
+
+// GetLatestSummaryByThreadID returns the most recent message with role='summary'
+// for the thread, or nil if none exists.
+func (r *MessageRepository) GetLatestSummaryByThreadID(ctx context.Context, threadID, tenantID, workspaceID uuid.UUID) (*model.Message, error) {
+	const q = `
+		SELECT id, tenant_id, workspace_id, thread_id, run_id, node_run_id,
+		       role, content_json, metadata_json, created_at
+		FROM messages
+		WHERE thread_id = $1
+		  AND tenant_id = $2
+		  AND workspace_id = $3
+		  AND role = 'summary'
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	rows, err := r.pool.Query(ctx, q, threadID, tenantID, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("GetLatestSummaryByThreadID: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, nil
+	}
+	var m model.Message
+	if err := rows.Scan(
+		&m.ID, &m.TenantID, &m.WorkspaceID,
+		&m.ThreadID, &m.RunID, &m.NodeRunID,
+		&m.Role, &m.ContentJSON, &m.MetadataJSON, &m.CreatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("scan summary message: %w", err)
+	}
+	return &m, nil
+}
+
+// GetAfterCreatedAt returns all messages for a thread created strictly after
+// afterTime, ordered ascending. Used to load the unsummarized tail.
+func (r *MessageRepository) GetAfterCreatedAt(ctx context.Context, threadID, tenantID, workspaceID uuid.UUID, afterTime interface{}) ([]*model.Message, error) {
+	const q = `
+		SELECT id, tenant_id, workspace_id, thread_id, run_id, node_run_id,
+		       role, content_json, metadata_json, created_at
+		FROM messages
+		WHERE thread_id = $1
+		  AND tenant_id = $2
+		  AND workspace_id = $3
+		  AND created_at > $4
+		ORDER BY created_at ASC
+	`
+	rows, err := r.pool.Query(ctx, q, threadID, tenantID, workspaceID, afterTime)
+	if err != nil {
+		return nil, fmt.Errorf("GetAfterCreatedAt: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []*model.Message
+	for rows.Next() {
+		var m model.Message
+		if err := rows.Scan(
+			&m.ID, &m.TenantID, &m.WorkspaceID,
+			&m.ThreadID, &m.RunID, &m.NodeRunID,
+			&m.Role, &m.ContentJSON, &m.MetadataJSON, &m.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan message: %w", err)
+		}
+		msgs = append(msgs, &m)
+	}
+	return msgs, nil
+}
+
 // Insert appends a message to the thread.
 func (r *MessageRepository) Insert(ctx context.Context, m *model.Message) error {
 	const q = `
