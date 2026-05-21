@@ -1,6 +1,6 @@
 # Agent Studio — Architecture Overview
 
-**Last updated:** 2026-05-19  
+**Last updated:** 2026-05-21  
 **Status:** Backend complete (all phases implemented)
 
 ---
@@ -22,7 +22,7 @@ It does **not** run agents or execute flows — that is the Orchestrator's job.
 | Layer | Technology |
 |---|---|
 | Runtime | Java 17, Spring Boot 3.4.1 |
-| Auth | Stateless JWT (RS256 via `libs/java/common`) |
+| Auth | Stateless JWT (RS256 via `libs/java/common`); `token_type` must be `access`; optional issuer/audience validation via `JWT_ISSUER` / `JWT_AUDIENCE` env vars |
 | DB | PostgreSQL (Flyway migrations, Spring Data JPA) |
 | HTTP Client | Spring `RestClient` + `JdkClientHttpRequestFactory` (HTTP/1.1, for proxying) |
 | SSE | Spring `SseEmitter` + `@Async` thread pool |
@@ -63,6 +63,32 @@ human_review_tasks — first-class human review/approval task
 
 ---
 
+## Security
+
+### JWT Validation
+
+`JwtAuthFilter` validates every non-public request:
+
+1. **Signature** — RS256 public key fetched from IAM at startup (`GET /.well-known/jwks.json`).
+2. **Expiry** — standard `exp` claim check.
+3. **`token_type`** — must equal `"access"`. Pre-auth and refresh tokens are rejected with 401.
+4. **Issuer** — checked when `JWT_ISSUER` env var is non-blank (set in production; leave blank for local dev).
+5. **Audience** — checked when `JWT_AUDIENCE` env var is non-blank.
+
+See `services/agent-studio/.env.example` for the relevant variables.
+
+### Feature Entitlements
+
+Agent Studio uses `FeatureGuardService` to enforce tenant-level feature flags on write operations. It calls `GET {IAM_URL}/entitlements/features` with the caller's bearer token, parses the `{ data: [{ featureKey, enabled }] }` response, and caches results per `tenantId` for **5 minutes**. If IAM is unreachable the guard **fails open** (allows the request) to preserve availability.
+
+| Feature key | Gates |
+|---|---|
+| `agent_studio.agents` | create, update, delete agents |
+| `agent_studio.tools` | create, update, delete tools |
+| `agent_studio.flows` | create, update, delete flows and all version write/publish operations |
+
+---
+
 ## API Surface (agent-studio)
 
 Base path: `/api/v1`  
@@ -71,13 +97,13 @@ All responses: `ApiResponse<T>` envelope from `libs/java/common`.
 
 ### Agents
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/agents` | List agents (paginated) |
-| `POST` | `/agents` | Create agent |
-| `GET` | `/agents/{id}` | Get agent |
-| `PUT` | `/agents/{id}` | Update agent |
-| `DELETE` | `/agents/{id}` | Archive agent |
+| Method | Path | Description | Permission required | Feature required |
+|---|---|---|---|---|
+| `GET` | `/agents` | List agents (paginated) | `agent:read` | — |
+| `POST` | `/agents` | Create agent | `agent:create` | `agent_studio.agents` |
+| `GET` | `/agents/{id}` | Get agent | `agent:read` | — |
+| `PUT` | `/agents/{id}` | Update agent | `agent:update` | `agent_studio.agents` |
+| `DELETE` | `/agents/{id}` | Archive agent | `agent:delete` | `agent_studio.agents` |
 
 **Agent fields (added):**
 - `tool_ids: UUID[]` — list of Tool IDs attached to this agent
@@ -85,28 +111,28 @@ All responses: `ApiResponse<T>` envelope from `libs/java/common`.
 
 ### Tools
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/tools` | List tools (paginated) |
-| `POST` | `/tools` | Create tool |
-| `GET` | `/tools/{id}` | Get tool |
-| `PUT` | `/tools/{id}` | Update tool |
-| `DELETE` | `/tools/{id}` | Archive tool |
+| Method | Path | Description | Permission required | Feature required |
+|---|---|---|---|---|
+| `GET` | `/tools` | List tools (paginated) | `tool:read` | — |
+| `POST` | `/tools` | Create tool | `tool:create` | `agent_studio.tools` |
+| `GET` | `/tools/{id}` | Get tool | `tool:read` | — |
+| `PUT` | `/tools/{id}` | Update tool | `tool:update` | `agent_studio.tools` |
+| `DELETE` | `/tools/{id}` | Archive tool | `tool:delete` | `agent_studio.tools` |
 
 ### Flows
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/flows` | List flows (paginated) |
-| `POST` | `/flows` | Create flow |
-| `GET` | `/flows/{id}` | Get flow |
-| `PUT` | `/flows/{id}` | Update flow |
-| `DELETE` | `/flows/{id}` | Archive flow |
-| `GET` | `/flows/{id}/versions` | List versions |
-| `POST` | `/flows/{id}/versions` | Create draft version |
-| `GET` | `/flows/{id}/versions/{vid}` | Get version |
-| `PUT` | `/flows/{id}/versions/{vid}` | Update draft version |
-| `POST` | `/flows/{id}/versions/{vid}/publish` | Publish version |
+| Method | Path | Description | Permission required | Feature required |
+|---|---|---|---|---|
+| `GET` | `/flows` | List flows (paginated) | `flow:read` | — |
+| `POST` | `/flows` | Create flow | `flow:create` | `agent_studio.flows` |
+| `GET` | `/flows/{id}` | Get flow | `flow:read` | — |
+| `PUT` | `/flows/{id}` | Update flow | `flow:update` | `agent_studio.flows` |
+| `DELETE` | `/flows/{id}` | Archive flow | `flow:delete` | `agent_studio.flows` |
+| `GET` | `/flows/{id}/versions` | List versions | `flow:read` | — |
+| `POST` | `/flows/{id}/versions` | Create draft version | `flow:update` | `agent_studio.flows` |
+| `GET` | `/flows/{id}/versions/{vid}` | Get version | `flow:read` | — |
+| `PUT` | `/flows/{id}/versions/{vid}` | Update draft version | `flow:update` | `agent_studio.flows` |
+| `POST` | `/flows/{id}/versions/{vid}/publish` | Publish version | `flow:publish` | `agent_studio.flows` |
 
 **Publish validation** (enforced in `FlowService.publish()`):
 - `graph_json` must be valid JSON

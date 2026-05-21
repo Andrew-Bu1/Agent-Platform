@@ -374,3 +374,105 @@ Downstream services must validate `iss`, `aud`, `token_type`, and `exp`. They mu
 5. POST /auth/refresh                      → new access_token + refresh_token
 6. POST /auth/logout                       → revoke all sessions
 ```
+
+---
+
+## Seeded System Permissions Reference
+
+29 platform-wide (`tenant_id IS NULL`) permissions are seeded across migrations V5, V6, V9, and V11.  
+All are `is_system = true` and cannot be modified or deleted by tenant admins.
+
+### Permissions by resource
+
+| Key | Resource | Action | Description | Migration |
+|---|---|---|---|---|
+| `model:invoke` | model | invoke | Invoke AI models | V5 |
+| `model:read` | model | read | Read and list model configurations | V9 |
+| `model:manage` | model | manage | Create, update, delete model configurations | V6 |
+| `provider:manage` | provider | manage | Create, update, delete AI providers and rotate API keys | V6 |
+| `feature:manage` | feature | manage | Create, update, delete platform feature definitions | V9 |
+| `entitlement:manage` | entitlement | manage | Grant/update/revoke model and feature entitlements per tenant | V9 |
+| `datasource:create` | datasource | create | Create data sources | V5 |
+| `datasource:read` | datasource | read | Read data sources | V5 |
+| `datasource:update` | datasource | update | Update data source configurations | V9 |
+| `datasource:delete` | datasource | delete | Delete data sources | V9 |
+| `datasource:ingest` | datasource | ingest | Ingest data | V5 |
+| `datasource:search` | datasource | search | Search data sources | V5 |
+| `agent:create` | agent | create | Create agents | V5 |
+| `agent:read` | agent | read | Read and list agents | V9 |
+| `agent:update` | agent | update | Update agents | V5 |
+| `agent:delete` | agent | delete | Delete agents | V9 |
+| `agent:run` | agent | run | Run agents | V5 |
+| `tool:create` | tool | create | Create tools | V9 |
+| `tool:read` | tool | read | Read and list tools | V9 |
+| `tool:update` | tool | update | Update tools | V9 |
+| `tool:delete` | tool | delete | Delete tools | V9 |
+| `flow:create` | flow | create | Create flows | V5 |
+| `flow:read` | flow | read | Read and list flows and flow versions | V11 |
+| `flow:update` | flow | update | Update flows | V9 |
+| `flow:delete` | flow | delete | Delete flows | V9 |
+| `flow:publish` | flow | publish | Publish flows | V5 |
+| `flow:run` | flow | run | Run flows | V5 |
+| `role:manage` | role | manage | Create, update, delete roles and permission assignments within a tenant | V9 |
+| `member:manage` | member | manage | Invite and remove members from tenant and workspaces | V9 |
+
+### Role → permission matrix
+
+`✓` = granted by system seed migrations. Tenant admins may further assign or revoke permissions on custom roles.
+
+| Permission | `platform_admin` | `tenant_admin` | `workspace_owner` | `agent_builder` | `workspace_member` | `viewer` |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `provider:manage` | ✓ | | | | | |
+| `model:manage` | ✓ | | | | | |
+| `feature:manage` | ✓ | | | | | |
+| `entitlement:manage` | ✓ | | | | | |
+| `model:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `model:invoke` | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `datasource:create` | | ✓ | ✓ | ✓ | | |
+| `datasource:read` | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `datasource:update` | | ✓ | ✓ | ✓ | | |
+| `datasource:delete` | | ✓ | ✓ | ✓ | | |
+| `datasource:ingest` | | ✓ | ✓ | ✓ | | |
+| `datasource:search` | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `agent:create` | | ✓ | ✓ | ✓ | | |
+| `agent:read` | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `agent:update` | | ✓ | ✓ | ✓ | | |
+| `agent:delete` | | ✓ | ✓ | ✓ | | |
+| `agent:run` | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `tool:create` | | ✓ | ✓ | ✓ | | |
+| `tool:read` | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `tool:update` | | ✓ | ✓ | ✓ | | |
+| `tool:delete` | | ✓ | ✓ | ✓ | | |
+| `flow:create` | | ✓ | ✓ | ✓ | | |
+| `flow:read` | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `flow:update` | | ✓ | ✓ | ✓ | | |
+| `flow:delete` | | ✓ | ✓ | ✓ | | |
+| `flow:publish` | | ✓ | ✓ | ✓ | | |
+| `flow:run` | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `role:manage` | | ✓ | | | | |
+| `member:manage` | | ✓ | ✓ | | | |
+
+**Notes:**
+- `platform_admin` is a **platform-scoped** role. It does not grant workspace-level resource permissions (invoke, CRUD, run). A platform admin who also needs to use workspace features must hold a workspace role in addition.
+- `role:manage` is granted only to `tenant_admin`. Workspace owners manage workspace membership but do not manage tenant-level role/permission definitions.
+- `tenant_admin` inherits all workspace-level permissions in addition to tenant management permissions.
+
+---
+
+## Seeded Features Reference
+
+9 platform features are seeded across migrations V10 and V12.  
+Features are enabled per-tenant via `feature_entitlement` records (managed by platform admins).  
+Downstream services use `FeatureGuard.require(tenantId, token, key)` to gate endpoints.
+
+| Key | Name | Description | Enforced by | Migration |
+|---|---|---|---|---|
+| `agent_studio.flows` | Flow Builder | Create, edit, and run multi-agent flows in Agent Studio | agent-studio (Java) | V10 |
+| `agent_studio.agents` | Agent Management | Create and manage AI agents in Agent Studio | agent-studio (Java) | V10 |
+| `agent_studio.tools` | Tool Management | Create and manage tools (HTTP and code) in Agent Studio | agent-studio (Java) | V10 |
+| `datahub.datasources` | DataHub Datasources | Create and manage datasources in DataHub | datahub (Go) | V10 |
+| `datahub.ingestion` | DataHub Ingestion | Trigger document ingestion and embedding pipelines | datahub (Go) | V10 |
+| `datahub.search` | DataHub Semantic Search | Run semantic vector search over ingested knowledge | datahub (Go) | V10 |
+| `aihub.chat` | AIHub Chat Completions | Call LLM chat completions via AIHub | aihub (Python) | V10 |
+| `aihub.embedding` | AIHub Embeddings | Generate text embeddings via AIHub | aihub (Python) | V10 |
+| `aihub.rerank` | AIHub Rerank | Rerank candidate passages by relevance score via AIHub | aihub (Python) | V12 |

@@ -225,7 +225,19 @@ For `local` adapter models, the SentenceTransformer is loaded from `.models/{mod
 
 ## 7. Entitlement Enforcement
 
-`FeatureGuard` and `EntitlementGuard` are the two layers that control what each tenant is allowed to do in AIHub. They run in order on every inference call.
+Three layers control what a caller is allowed to do in AIHub on every inference call. They run in order.
+
+### Layer 0 — RBAC permission gate
+
+Before any entitlement check, AIHub verifies that the calling user or service client holds the `model:invoke` permission in the JWT `permissions` claim. This is a **local, in-process check** — no IAM call is made.
+
+| Endpoint | Permission required |
+|---|---|
+| `POST /v1/chat` | `model:invoke` |
+| `POST /v1/embed` | `model:invoke` |
+| `POST /v1/rerank` | `model:invoke` |
+
+Missing or denied permission → 403. `model:invoke` is a standard platform permission seeded in the IAM DB and assigned to roles that are expected to call AI models.
 
 ### Layer 1 — Feature gate (`FeatureGuard`)
 
@@ -259,12 +271,13 @@ This is a tenant-level on/off switch — it controls whether the tenant's plan i
 
 ### Pre-call inference checks (in order)
 
-1. **Feature enabled** — `FeatureGuard` checks that the tenant has `aihub.chat` / `aihub.embedding` / `aihub.rerank` enabled (see Layer 1 above).
-2. **Entitlement exists and is allowed** — tenant must have an entitlement row for `(model_key, operation_type)` with `allowed=true`. Missing row or `allowed=false` → 403.
-3. **RPM limit** — Redis `INCR aihub:rpm:{tenant_id}:{model_key}:{op}` with 60 s TTL. Count is incremented *before* the call so in-flight requests count. If count exceeds limit → 429.
-4. **TPM limit** — reads current minute bucket from Redis. If at or above limit → 429.
-5. **Daily token limit** — reads current UTC day bucket from Redis. If at or above limit → 429.
-6. **Monthly token limit** — reads current UTC month bucket from Redis. If at or above limit → 429.
+1. **Permission gate** — `model:invoke` must be present in the JWT `permissions` claim (local check, no IAM call). Missing → 403.
+2. **Feature enabled** — `FeatureGuard` checks that the tenant has `aihub.chat` / `aihub.embedding` / `aihub.rerank` enabled (see Layer 1 above). Not enabled → 403.
+3. **Entitlement exists and is allowed** — tenant must have an entitlement row for `(model_key, operation_type)` with `allowed=true`. Missing row or `allowed=false` → 403.
+4. **RPM limit** — Redis `INCR aihub:rpm:{tenant_id}:{model_key}:{op}` with 60 s TTL. Count is incremented *before* the call so in-flight requests count. If count exceeds limit → 429.
+5. **TPM limit** — reads current minute bucket from Redis. If at or above limit → 429.
+6. **Daily token limit** — reads current UTC day bucket from Redis. If at or above limit → 429.
+7. **Monthly token limit** — reads current UTC month bucket from Redis. If at or above limit → 429.
 
 ### Post-call accounting (best-effort)
 

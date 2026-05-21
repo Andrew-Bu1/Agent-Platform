@@ -12,7 +12,13 @@ DataHub is the HTTP-facing service that manages the full lifecycle of knowledge 
 
 A **datasource** is a named collection of documents, analogous to a folder or dataset. It is the top-level container that groups related documents and is the unit of access for vector search.
 
-**Feature gate:** `Create`, `Update`, and `Delete` require the tenant to have the `datahub.datasources` feature enabled (checked via JWT permissions). Returns `403` if the feature is not enabled. `Get`/`List` are not gated — read operations are always allowed once authenticated.
+**Permission requirements:** Each operation is gated by the caller's JWT `permissions` claim (local check, no IAM call):
+- `Create` → `datasource:create`
+- `Get` / `List` → `datasource:read`
+- `Update` → `datasource:update`
+- `Delete` → `datasource:delete`
+
+Missing permission → 403.
 
 - **Create** — registers a new datasource with a name and optional description. A UUID v7 is generated as the primary key. When the caller is a user (not a service client), `created_by_user_id` is set from the JWT `sub` claim; service-client tokens leave it `NULL`.
 - **Get / List** — retrieves a single datasource by ID or lists all datasources belonging to the caller's tenant + workspace.
@@ -25,6 +31,14 @@ Uniqueness is enforced at the `(tenant_id, workspace_id, name)` level — two wo
 
 A **document** is a single uploaded file associated with a datasource. It carries the file's storage path in MinIO, a SHA-256 content hash for deduplication, and arbitrary JSON metadata for downstream use.
 
+**Permission requirements:** Each operation is gated by the caller's JWT `permissions` claim (local check, no IAM call):
+- `Upload` → `datasource:ingest`
+- `List by datasource` / `Get by ID` → `datasource:read`
+- `Update` → `datasource:update`
+- `Delete` → `datasource:delete`
+
+Missing permission → 403.
+
 - **Upload (`multipart/form-data`)** — the handler reads the file bytes (hard cap: 100 MB; returns `413` if exceeded) from the form, computes a SHA-256 hash, then proceeds through the following service-layer checks in order:
   1. **Datasource ownership** — `DatasourceRepository.GetByID(datasource_id, tenant_id, workspace_id)` is called first. If the datasource does not belong to the caller's tenant/workspace, the upload is rejected with `404` before any file data is processed.
   2. **Deduplication** — checks for an existing document with the same hash in the same datasource (`FindByHash`); rejects with `409 Conflict` if found.
@@ -32,13 +46,14 @@ A **document** is a single uploaded file associated with a datasource. It carrie
 - **List by datasource** — returns all documents belonging to a given datasource within the caller's tenant/workspace scope.
 - **Get by ID** — retrieves a single document record.
 - **Update** — allows modifying the `storage_path` (e.g., after a file migration) or `metadata` JSON.
+- **Set Active Ingestion (`PUT /documents/{id}/active-ingestion`)** — marks a specific (completed) ingestion as the active one for vector search. Only chunks produced by the active ingestion are returned by the search endpoint; all other ingestion runs' chunks are excluded. Setting a new active ingestion is instant and non-destructive — old chunks and embeddings are preserved. Requires `datasource:ingest` permission + `datahub.datasources` feature flag.
 - **Delete** — removes the document record; cascades to ingestions, chunks, and embeddings.
 
 #### 1.3 Ingestion Management
 
 An **ingestion** represents one processing run of a document: it pairs the document with a chunking strategy, a chunking config, and an embedding model. The same document can be ingested multiple times with different strategies or models.
 
-**Feature gate:** `Create` requires the `datahub.ingestion` feature to be enabled for the tenant. Returns `403` if not enabled.
+**Permission requirement:** All ingestion operations require the `datasource:ingest` permission in the JWT `permissions` claim (local check). Feature entitlement `datahub.ingestion` is checked via IAM on `Create` and `Delete` (fails open when IAM is unreachable). Missing permission → 403.
 
 - **Create (→ 202 Accepted)** — validates that `chunk_strategy` is one of `fixed_size`, `recursive_split`, or `semantic_chunking` and that `embedding_model` is non-empty. `chunk_config` is optional — when omitted, each strategy applies its own defaults (size=512, overlap=50 for fixed/recursive; maxSize=1024, threshold=0.4 for semantic). It inserts an ingestion record with `status = pending`, then publishes an `IngestionJob` to the Redis ingestion queue via `RPush`. Returns `202 Accepted` immediately — processing is asynchronous.
 - **List by document** — returns all ingestion runs for a given document.
@@ -51,43 +66,50 @@ An **ingestion** represents one processing run of a document: it pairs the docum
 
 Chunks are produced exclusively by the `ChunkWorker`; the DataHub API exposes only read endpoints.
 
+**Permission requirement:** Both endpoints require `datasource:read` in the JWT `permissions` claim (local check). Missing permission → 403.
+
 - **List by ingestion** — returns all chunks produced by a specific ingestion run, ordered by `chunk_index`.
 - **Get by ID** — retrieves a single chunk with its `content` and `metadata`.
 
 #### 1.5 Vector Search
 
-The search endpoint performs an approximate nearest-neighbour cosine similarity search using **pgvector** against the pre-computed embedding tables.
+The search endpoint performs an approximate nearest-neighbour cosine similarity search using **pgvector** against the pre-computed embedding tables. Only chunks belonging to the **active ingestion** of each document are included in results.
 
-**Feature gate:** `Search` requires the `datahub.search` feature to be enabled for the tenant. Returns `403` if not enabled.
+**Permission requirement:** `Search` requires the `datasource:search` permission in the JWT `permissions` claim (local check). Missing permission → 403.
 
 - **Search** — accepts a raw `vector` (float array) and an optional `topK` (default 10). The vector length determines which dimension table to query (`chunk_384dimension`, `chunk_768dimension`, or `chunk_1024dimension`). The datasource ownership is verified first (tenant-scoped), then the query runs:
   ```sql
-  SELECT chunk_id, content, (1 - (embedding <=> $vector)) AS score
-  FROM chunk_<dim>dimension
-  WHERE datasource_id=$1 AND tenant_id=$2 AND workspace_id=$3
+  SELECT e.chunk_id, c.content, (1 - (embedding <=> $vector)) AS score
+  FROM chunk_<dim>dimension e
+  JOIN chunks   c ON c.id  = e.chunk_id
+  JOIN documents d ON d.id = c.document_id
+  WHERE e.datasource_id = $1
+    AND e.tenant_id     = $2
+    AND e.workspace_id  = $3
+    AND c.ingestion_id  = d.active_ingestion_id
   ORDER BY embedding <=> $vector
   LIMIT $topK
   ```
-  Results are returned as `[{chunk_id, content, score}]` sorted by descending relevance.
+  Results are returned as `[{chunk_id, content, score}]` sorted by descending relevance. Documents with no active ingestion (`active_ingestion_id IS NULL`) are automatically excluded.
 
 **Design note:** the caller is expected to generate the query vector externally (e.g., by calling AIHub `/v1/embed`) before calling this endpoint. The API deliberately does not embed text inline to keep the service stateless with respect to AI models.
 
 #### 1.6 DLQ Admin
 
-DataHub exposes three endpoints to inspect and recover jobs that failed in the data-worker pipeline. All endpoints sit behind the standard JWT middleware and require a valid tenant token.
+DataHub exposes three endpoints to inspect and recover jobs that failed in the data-worker pipeline. All endpoints sit behind the standard JWT middleware and require the **`datasource:ingest`** permission.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/ingestions/dlq?limit=100` | Returns `{ total, entries[] }` — lists pending DLQ entries without removing them. `limit` max 1000. |
-| `POST` | `/ingestions/dlq/replay` | Pops every entry from the DLQ and pushes its original payload back to the source queue. Returns `{ replayed: N }`. |
-| `DELETE` | `/ingestions/dlq` | Clears all entries from the DLQ. Returns `204 No Content`. |
+| Method | Path | Description | Permission |
+|---|---|---|---|
+| `GET` | `/ingestions/dlq?limit=100` | Returns `{ total, entries[] }` — lists pending DLQ entries without removing them. `limit` max 1000. | `datasource:ingest` |
+| `POST` | `/ingestions/dlq/replay` | Pops every entry from the DLQ and pushes its original payload back to the source queue. Returns `{ replayed: N }`. | `datasource:ingest` |
+| `DELETE` | `/ingestions/dlq` | Clears all entries from the DLQ. Returns `204 No Content`. | `datasource:ingest` |
 
 Each DLQ entry has the shape:
 ```json
 { "queue": "datahub:queue:ingestion", "payload": "{...}", "error": "...", "queued_at": "2026-05-15T10:00:00Z" }
 ```
 
-The DLQ key is shared between DataHub and data-worker via the `REDIS_DLQ_KEY` environment variable (default `datahub:queue:dlq`).
+**Tenant isolation:** The DLQ is namespaced per tenant. DataHub reads and writes the Redis key `{REDIS_DLQ_KEY}:{tenantID}` (e.g. `datahub:queue:dlq:550e8400-e29b-41d4-a716-446655440000`), derived from the caller's JWT `tenant_id` claim at request time. Each tenant only sees and can operate on their own failed jobs. The base key is configured via `REDIS_DLQ_KEY` (default `datahub:queue:dlq`); data-worker uses the same env var and appends the same `:{tenantID}` suffix when pushing failures.
 
 ---
 
@@ -107,7 +129,7 @@ Responsible for the first stage of the pipeline: downloading the raw file from M
   - `.docx` → ZIP extraction → `word/document.xml` → XML unmarshal → concatenate `<w:t>` text nodes.
 - If the extracted text is empty, the ingestion is marked `completed` with no chunks produced.
 - Pushes a `ChunkingJob` (carrying the raw text, strategy, config, model) to `datahub:queue:chunking`.
-- On any error: marks ingestion as **`failed`** and pushes the raw payload to the dead-letter queue (`datahub:queue:dlq`).
+- On any error: marks ingestion as **`failed`** and pushes the raw payload to the tenant-scoped dead-letter queue (`datahub:queue:dlq:{tenantID}`).
 
 #### 2.2 ChunkWorker
 
@@ -123,7 +145,7 @@ Responsible for splitting the extracted text into chunks and recording them in t
 - Otherwise, sets a Redis counter `datahub:embed:remaining:<ingestion_id> = N` **before** pushing any embed jobs (avoids a race where all embeds complete before the counter is visible).
 - For each chunk: inserts a row into `chunks` (with `chunk_index`, `content`, JSON metadata), returns the canonical chunk ID on insert or conflict, and pushes an `EmbedJob` to `datahub:queue:embedding`.
 - Updates ingestion status to **`chunked`** after all chunks are inserted and all embed jobs are queued.
-- On error: marks ingestion as `failed` and pushes to DLQ.
+- On error: marks ingestion as `failed` and pushes to the tenant-scoped DLQ (`datahub:queue:dlq:{tenantID}`).
 
 #### 2.3 EmbedWorker
 
@@ -139,15 +161,17 @@ Responsible for generating embeddings via AIHub and storing them in the appropri
 - Inserts the embedding using pgvector's literal syntax (`[f1,f2,...]::vector`) with `ON CONFLICT (chunk_id, tenant_id, workspace_id) DO NOTHING` for idempotency.
 - If the row already existed (`RowsAffected == 0`), the counter decrement is **skipped** to avoid double-counting a chunk that was already embedded. This handles the case where the same EmbedJob is delivered more than once (e.g., a retried success). **Known limitation:** if the DB insert succeeded but the subsequent Redis DECR failed, the replayed job will see `RowsAffected == 0` and skip the decrement — the counter will never reach 0 and the ingestion will remain stuck in `chunked` state. Recovery requires manual counter correction or ingestion re-trigger.
 - Decrements the Redis counter `datahub:embed:remaining:<ingestion_id>`. When the counter reaches exactly **0**, all chunks have been embedded and the ingestion is updated to **`completed`**. A negative result means the counter key expired before all embeds ran — in that case completion is skipped and a warning is logged.
-- On any error (AIHub call, DB insert, or Redis decrement): returns an error so the job is sent to the DLQ for replay. The ingestion is **not** immediately failed.
+- On any error (AIHub call, DB insert, or Redis decrement): returns an error so the job is sent to the tenant-scoped DLQ for replay. The ingestion is **not** immediately failed.
 
 #### 2.4 Dead-Letter Queue
 
-All three workers push failed payloads to `datahub:queue:dlq` (configurable via `REDIS_DLQ_KEY`). Each DLQ entry is a JSON object:
+All three workers push failed payloads to a **tenant-scoped** Redis key: `{REDIS_DLQ_KEY}:{tenantID}` (e.g. `datahub:queue:dlq:550e8400-e29b-41d4-a716-446655440000`). The base key is configured via `REDIS_DLQ_KEY` (default `datahub:queue:dlq`); the tenant suffix is taken from the `tenant_id` field of the job payload.
+
+Each DLQ entry is a JSON object:
 ```json
 { "queue": "<source_queue>", "payload": "<original_json>", "error": "<error_message>", "queued_at": "<RFC3339>" }
 ```
-The DLQ is a Redis list. Admin operations (inspect, replay, clear) are exposed via the DataHub API — see **section 1.6 DLQ Admin** above. data-worker itself has no HTTP interface.
+The DLQ is a Redis list per tenant. Admin operations (inspect, replay, clear) are exposed via the DataHub API — see **section 1.6 DLQ Admin** above. data-worker itself has no HTTP interface.
 
 ---
 
@@ -158,7 +182,7 @@ The DLQ is a Redis list. Admin operations (inspect, replay, clear) are exposed v
 | `datahub:queue:ingestion` | DataHub `IngestionService` | `IngestionWorker` | `IngestionJob` |
 | `datahub:queue:chunking` | `IngestionWorker` | `ChunkWorker` | `ChunkingJob` |
 | `datahub:queue:embedding` | `ChunkWorker` | `EmbedWorker` | `EmbedJob` |
-| `datahub:queue:dlq` | All workers (on error) | DataHub `/ingestions/dlq` admin endpoints | DLQ entry |
+| `datahub:queue:dlq:{tenantID}` | All workers (on error) | DataHub `/ingestions/dlq` admin endpoints | DLQ entry |
 
 All queues use Redis List with `RPush` (producer) and `BLPop` (consumer) — simple FIFO.
 
@@ -169,7 +193,7 @@ All queues use Redis List with `RPush` (producer) and `BLPop` (consumer) — sim
 | Table | Owner | Purpose |
 |---|---|---|
 | `datasources` | DataHub | Named document collections per tenant/workspace. `created_by_user_id` records the creating user (NULL for service-client callers). |
-| `documents` | DataHub | Uploaded files with hash, MinIO path, metadata. `created_by_user_id` records the uploading user (NULL for service-client callers). |
+| `documents` | DataHub | Uploaded files with hash, MinIO path, metadata, and `active_ingestion_id` pointer. `created_by_user_id` records the uploading user (NULL for service-client callers). |
 | `ingestions` | DataHub (write), Workers (status updates) | Processing runs — one per document+strategy+model |
 | `chunks` | ChunkWorker | Text fragments produced by chunking |
 | `chunk_384dimension` | EmbedWorker | pgvector embeddings, 384-dim |
@@ -298,13 +322,13 @@ sequenceDiagram
         alt Download fails
             Minio-->>IW: error
             IW->>DB: UPDATE ingestions SET status='failed'
-            IW->>Redis: RPush datahub:queue:dlq {queue, payload, error}
+            IW->>Redis: RPush datahub:queue:dlq:{tenantID}:{tenantID} {queue, payload, error}
         else Download ok
             Minio-->>IW: file bytes
             IW->>IW: parser.ExtractText(bytes, filename)<br/>.txt → direct<br/>.docx → XML parse word/document.xml
             alt Parse fails
                 IW->>DB: UPDATE ingestions SET status='failed'
-                IW->>Redis: RPush datahub:queue:dlq
+                IW->>Redis: RPush datahub:queue:dlq:{tenantID}
             else Empty text (blank document)
                 IW->>DB: UPDATE ingestions SET status='completed'
             else Text extracted
@@ -343,7 +367,7 @@ sequenceDiagram
         end
         alt Any error
             CW->>DB: UPDATE ingestions SET status='failed'
-            CW->>Redis: RPush datahub:queue:dlq
+            CW->>Redis: RPush datahub:queue:dlq:{tenantID}
         end
     end
 ```
@@ -365,12 +389,12 @@ sequenceDiagram
         EW->>AIHub: POST /v1/embed<br/>Authorization: Bearer <m2m-token><br/>{model, input: [chunk_text]}
         alt AIHub error / timeout (60s)
             AIHub-->>EW: error
-            EW->>Redis: RPush datahub:queue:dlq
+            EW->>Redis: RPush datahub:queue:dlq:{tenantID}
         else Success
             AIHub-->>EW: {data: [{embedding: [f1,f2,...]}]}
             EW->>EW: dim = len(vector)<br/>table = chunk_<dim>dimension
             alt Unsupported dimension
-                EW->>Redis: RPush datahub:queue:dlq
+                EW->>Redis: RPush datahub:queue:dlq:{tenantID}
             else Supported
                 EW->>DB: INSERT INTO chunk_<dim>dimension<br/>(id, tenant_id, workspace_id, chunk_id,<br/>datasource_id, embedding::vector)<br/>ON CONFLICT (chunk_id, tenant_id, workspace_id) DO NOTHING
                 alt RowsAffected == 0 (embedding already exists — idempotent retry)
@@ -388,46 +412,63 @@ sequenceDiagram
 
 ---
 
-### Flow 8 — Vector Search
+### Flow 8 — Set Active Ingestion
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant C as Client
-    participant EXT as Embedding Source (e.g. AIHub)
     participant DH as DataHub API
     participant DB as PostgreSQL
 
-    Note over C,EXT: Caller must generate the query vector externally first
-    C->>EXT: POST /v1/embed {model, input: ["query text"]}
-    EXT-->>C: {data: [{embedding: [f1,f2,...]}]}
-
-    C->>DH: POST /datasources/{id}/search<br/>Authorization: Bearer <token><br/>{vector: [...], topK: 10}
-    DH->>DH: Extract tenantId + workspaceId from JWT
-    alt Empty vector
-        DH-->>C: 400 Bad Request "vector must not be empty"
-    else Vector present
-        DH->>DB: SELECT id FROM datasources<br/>WHERE id=? AND tenant_id=? AND workspace_id=?
-        alt Datasource not found
-            DB-->>DH: no row
-            DH-->>C: 404 Not Found
-        else Found
-            DB-->>DH: row
-            DH->>DH: dim = len(vector) → select table<br/>(384 / 768 / 1024 supported)
-            alt Unsupported dimension
-                DH-->>C: 400 Bad Request "unsupported vector dimension"
-            else Supported
-                DH->>DB: SELECT chunk_id, content,<br/>(1-(embedding <=> $vector)) AS score<br/>FROM chunk_<dim>dimension<br/>WHERE datasource_id=? AND tenant_id=? AND workspace_id=?<br/>ORDER BY embedding <=> $vector<br/>LIMIT topK
-                DB-->>DH: [{chunk_id, content, score}, ...]
-                DH-->>C: 200 OK [{chunk_id, content, score}, ...]
-            end
-        end
+    C->>DH: PUT /documents/{document_id}/active-ingestion<br/>Authorization: Bearer <token><br/>{ingestion_id: "<uuid>"}
+    DH->>DH: Verify JWT — extract tenantId, workspaceId<br/>Check datasource:ingest permission
+    DH->>DB: SELECT id FROM documents WHERE id=? AND tenant_id=? AND workspace_id=?
+    alt Document not found
+        DB-->>DH: no row
+        DH-->>C: 404 Not Found
+    else Document exists
+        DB-->>DH: document row
+        DH->>DB: UPDATE documents<br/>SET active_ingestion_id = ingestion_id, updated_at = NOW()<br/>WHERE id=? AND tenant_id=? AND workspace_id=?
+        DB-->>DH: ok (FK constraint validates ingestion belongs to same tenant/workspace)
+        DH->>DB: SELECT * FROM documents WHERE id=? AND tenant_id=? AND workspace_id=?
+        DB-->>DH: updated document row
+        DH-->>C: 200 OK {document with active_ingestion_id set}
     end
+
+    Note over C,DH: All subsequent vector searches for this datasource<br/>will only return chunks from this ingestion run for this document
 ```
 
 ---
 
-### Flow 9 — Full End-to-End Pipeline
+### Flow 9 — Vector Search (active-ingestion filtered)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant AIHub as AIHub
+    participant DH as DataHub API
+    participant DB as PostgreSQL
+
+    C->>AIHub: POST /v1/embed {model, input: ["query text"]}
+    AIHub-->>C: {data: [{embedding: [f1,...,fN]}]}
+
+    C->>DH: POST /datasources/{id}/search {vector: [...], topK: 10}
+    DH->>DH: Verify JWT — tenant_id, workspace_id from claims
+    DH->>DB: SELECT id FROM datasources WHERE id=? AND tenant_id=? AND workspace_id=?
+    DB-->>DH: datasource row (or 404)
+    DH->>DH: len(vector) → select chunk_{N}dimension table
+    DH->>DB: SELECT e.chunk_id, c.content,<br/>       1-(e.embedding <=> $vector) AS score<br/>FROM chunk_{N}dimension e<br/>JOIN chunks   c ON c.id  = e.chunk_id<br/>JOIN documents d ON d.id = c.document_id<br/>WHERE e.datasource_id=$id AND e.tenant_id=$t AND e.workspace_id=$w<br/>  AND c.ingestion_id = d.active_ingestion_id<br/>ORDER BY e.embedding <=> $vector LIMIT $topK
+    DB-->>DH: [{chunk_id, content, score}]
+    DH-->>C: 200 [{chunk_id, content, score}]
+
+    Note over DH,DB: Documents without active_ingestion_id (NULL)<br/>are automatically excluded — NULL ≠ any ingestion_id
+```
+
+---
+
+### Flow 10 — Full End-to-End Pipeline
 
 ```mermaid
 sequenceDiagram
@@ -480,10 +521,15 @@ sequenceDiagram
 
     C->>DH: GET /ingestions/{id} → {status: "completed"}
 
+    Note over C,DH: Mark this ingestion as active for search
+    C->>DH: PUT /documents/{doc_id}/active-ingestion {ingestion_id}
+    DH->>DB: UPDATE documents SET active_ingestion_id = ingestion_id
+    DH-->>C: 200 {document with active_ingestion_id}
+
     C->>AIHub: POST /v1/embed {query text}
     AIHub-->>C: query vector
     C->>DH: POST /datasources/{id}/search {vector, topK}
-    DH->>DB: cosine similarity search
+    DH->>DB: cosine similarity search (only active ingestion chunks)
     DB-->>DH: ranked chunks
     DH-->>C: [{chunk_id, content, score}]
 ```

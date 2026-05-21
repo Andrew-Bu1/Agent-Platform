@@ -2,6 +2,8 @@
 
 DataHub's search is **stateless with respect to AI models**: the caller must supply the query vector directly. DataHub does not call any embedding model at query time. This keeps the search endpoint fast, model-agnostic, and free of external dependencies on the hot path.
 
+Search results are scoped to the **active ingestion** of each document. A document must have an `active_ingestion_id` set (via `PUT /documents/{id}/active-ingestion`) for its chunks to appear in results. This ensures re-ingesting a document with a different strategy or embedding model does not mix stale embeddings into search results.
+
 ---
 
 ## Typical Client Flow (with embedding step)
@@ -28,7 +30,7 @@ sequenceDiagram
 
     DH->>DH: determine table from vector length:<br/>384 → chunk_384dimension<br/>768 → chunk_768dimension<br/>1024 → chunk_1024dimension<br/>other → 400 Bad Request
 
-    DH->>PG: SELECT e.chunk_id, c.content,<br/>       1 - (e.embedding <=> $vector::vector) AS score<br/>FROM chunk_{N}dimension e<br/>JOIN chunks c ON c.id = e.chunk_id<br/>WHERE e.datasource_id=$id<br/>  AND e.tenant_id=$t<br/>  AND e.workspace_id=$w<br/>ORDER BY e.embedding <=> $vector<br/>LIMIT $topK
+    DH->>PG: SELECT e.chunk_id, c.content,<br/>       1 - (e.embedding <=> $vector::vector) AS score<br/>FROM chunk_{N}dimension e<br/>JOIN chunks   c ON c.id  = e.chunk_id<br/>JOIN documents d ON d.id = c.document_id<br/>WHERE e.datasource_id=$id<br/>  AND e.tenant_id=$t<br/>  AND e.workspace_id=$w<br/>  AND c.ingestion_id = d.active_ingestion_id<br/>ORDER BY e.embedding <=> $vector<br/>LIMIT $topK
     PG-->>DH: [{chunk_id, content, score}] sorted DESC by score
 
     DH-->>C: 200 [{chunk_id, content, score}]
@@ -50,7 +52,7 @@ sequenceDiagram
     C->>DH: POST /datasources/{id}/search {vector: [...], topK: 5}<br/>Authorization: Bearer <access_token>
     DH->>DH: verify JWT (tenant_id, workspace_id from claims)
     DH->>PG: verify datasource ownership (tenant + workspace scope)
-    DH->>PG: cosine similarity search in chunk_{N}dimension<br/>WHERE datasource_id=$id AND tenant_id=$t AND workspace_id=$w<br/>ORDER BY embedding <=> $vector LIMIT 5
+    DH->>PG: cosine similarity search in chunk_{N}dimension<br/>WHERE datasource_id=$id AND tenant_id=$t AND workspace_id=$w<br/>  AND ingestion_id = d.active_ingestion_id<br/>ORDER BY embedding <=> $vector LIMIT 5
     PG-->>DH: top-5 chunks
     DH-->>C: 200 [{chunk_id, content, score}]
 ```
@@ -77,4 +79,5 @@ pgvector uses approximate nearest-neighbour search over this index. All WHERE cl
 | Caller supplies the query vector | Keeps DataHub stateless — no AI model dependency on the search hot path |
 | Vector dimension determines table | 384 / 768 / 1024 are the only supported sizes; other sizes return `400 Bad Request` |
 | Datasource ownership verified before search | Prevents cross-tenant data leakage — even if a valid JWT is presented, the datasource must belong to that tenant+workspace |
+| Only active-ingestion chunks are searched | Each document has an `active_ingestion_id` pointer; the search JOIN filters `c.ingestion_id = d.active_ingestion_id`, so re-ingesting with a new strategy/model does not pollute results with stale embeddings. Documents with `active_ingestion_id = NULL` are excluded from search until set. |
 | No RAG / LLM integration in DataHub | RAG generation is the caller's responsibility — DataHub only returns raw chunks and scores |

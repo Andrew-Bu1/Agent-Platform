@@ -24,6 +24,7 @@ erDiagram
         VARCHAR255  storage_path        "MinIO object path: datasource_id/document_id/filename"
         JSONB       metadata            "default '{}'"
         VARCHAR50   status              "uploaded | processing | indexed | failed | archived | deleted"
+        UUID        active_ingestion_id "FK → ingestions — nullable; the ingestion whose chunks are used for vector search"
         UUID        created_by_user_id  "nullable — NULL for service-client callers"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
@@ -91,6 +92,7 @@ erDiagram
 
     datasources ||--o{ documents : "contains"
     documents ||--o{ ingestions : "processed by"
+    documents }o--o| ingestions : "active_ingestion_id (search target)"
     documents ||--o{ chunks : "split into"
     ingestions ||--o{ chunks : "produced by"
     chunks ||--o| chunk_384dimension : "embedded as"
@@ -110,6 +112,7 @@ erDiagram
 | `uq_datasources_tenant_workspace_name` | `datasources` | Name unique per tenant+workspace |
 | `uq_documents_tenant_workspace_datasource_file_hash` | `documents` | Dedup: same file cannot be uploaded twice to the same datasource |
 | `fk_documents_datasource_scope` | `documents` | FK on `(datasource_id, tenant_id, workspace_id)` — ensures documents stay within the same tenant+workspace as their datasource |
+| `fk_documents_active_ingestion` | `documents` | Composite FK `(active_ingestion_id, tenant_id, workspace_id) → ingestions` — `ON DELETE SET NULL`; automatically clears the active pointer when an ingestion is deleted |
 | `uq_chunks_ingestion_chunk_index` | `chunks` | Idempotent chunk insertion: `ON CONFLICT ... DO UPDATE` |
 | `uq_chunk_384_chunk_scope` | `chunk_384dimension` | One 384-dim embedding per chunk per tenant+workspace |
 | HNSW indexes | All `chunk_*dimension` tables | pgvector HNSW index with `vector_cosine_ops` for ANN search |
@@ -126,6 +129,7 @@ Deleting a **document** removes:
 
 Deleting an **ingestion** removes:
 - Its chunks → their embeddings (in the dimension tables via FK on chunks)
+- Any document whose `active_ingestion_id` pointed to this ingestion has that field automatically set to `NULL` (`ON DELETE SET NULL`), making the document unsearchable until a new active ingestion is set
 
 ---
 
@@ -143,20 +147,25 @@ The mapping from returned vector length to table name is enforced identically in
 
 ## Vector Search SQL
 
-Search is performed against the dimension table matching the query vector length:
+Search is performed against the dimension table matching the query vector length.
+Only chunks whose ingestion is the **active ingestion** of their parent document are returned — stale embeddings from previous ingestion runs are excluded.
 
 ```sql
 SELECT e.chunk_id, c.content, 1 - (e.embedding <=> $1::vector) AS score
 FROM chunk_384dimension e
-JOIN chunks c ON c.id = e.chunk_id
+JOIN chunks   c ON c.id  = e.chunk_id
+JOIN documents d ON d.id = c.document_id
 WHERE e.datasource_id = $2
   AND e.tenant_id     = $3
   AND e.workspace_id  = $4
+  AND c.ingestion_id  = d.active_ingestion_id
 ORDER BY e.embedding <=> $1::vector
 LIMIT $5
 ```
 
 `<=>` is pgvector's cosine distance operator. `1 - distance` converts to cosine **similarity** (higher = more relevant). Results are ordered by distance (ascending = most similar first).
+
+Documents without an `active_ingestion_id` (`NULL`) are implicitly excluded by the `c.ingestion_id = d.active_ingestion_id` condition (NULL ≠ anything), so they will not appear in search results until an active ingestion is set via `PUT /documents/{id}/active-ingestion`.
 
 ---
 

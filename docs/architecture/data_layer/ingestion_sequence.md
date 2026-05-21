@@ -55,7 +55,7 @@ sequenceDiagram
     participant MinIO as MinIO
     participant PG as PostgreSQL
     participant CQ as Redis<br/>datahub:queue:chunking
-    participant DLQ as Redis<br/>datahub:queue:dlq
+    participant DLQ as Redis<br/>datahub:queue:dlq:{tenantID}
 
     loop every job
         IW->>Redis: BLPop (5s timeout)
@@ -71,7 +71,7 @@ sequenceDiagram
             IW->>IW: unzip → parse word/document.xml → extract <w:t> text nodes
         else unsupported
             IW->>PG: UPDATE ingestions SET status=failed
-            IW->>DLQ: RPush {queue, payload, error}
+            IW->>DLQ: RPush {queue, payload, error, queued_at}
         end
 
         alt text is empty
@@ -95,7 +95,7 @@ sequenceDiagram
     participant PG as PostgreSQL
     participant Redis as Redis<br/>(counters)
     participant EQ as Redis<br/>datahub:queue:embedding
-    participant DLQ as Redis<br/>datahub:queue:dlq
+    participant DLQ as Redis<br/>datahub:queue:dlq:{tenantID}
 
     loop every job
         CW->>CQ: BLPop (5s timeout)
@@ -127,7 +127,7 @@ sequenceDiagram
 
         alt error at any step
             CW->>PG: UPDATE ingestions SET status=failed
-            CW->>DLQ: RPush {queue, payload, error}
+            CW->>DLQ: RPush {queue, payload, error, queued_at}
         end
     end
 ```
@@ -145,7 +145,7 @@ sequenceDiagram
     participant AIHub as AIHub<br/>POST /v1/embed
     participant PG as PostgreSQL<br/>(dimension tables)
     participant Redis as Redis<br/>(counters)
-    participant DLQ as Redis<br/>datahub:queue:dlq
+    participant DLQ as Redis<br/>datahub:queue:dlq:{tenantID}
 
     Note over EW,IAM: Token obtained once, cached until 30s before expiry
     EW->>IAM: POST /oauth/token {grant_type=client_credentials, client_id, client_secret}
@@ -172,7 +172,7 @@ sequenceDiagram
         end
 
         alt error (any step, including Redis decrement failure)
-            EW->>DLQ: RPush {queue, payload, error}
+            EW->>DLQ: RPush {queue, payload, error, queued_at}
             Note over EW: Any error (embed call, DB insert, or Redis decrement) returns the<br/>job to the DLQ for replay. The ingestion is not failed immediately.
         end
     end
