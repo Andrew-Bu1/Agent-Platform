@@ -3,6 +3,7 @@ package com.agentplatform.studio.api.tool;
 import com.agentplatform.common.security.AuthContext;
 import com.agentplatform.common.web.ApiResponse;
 import com.agentplatform.common.web.PageResponse;
+import com.agentplatform.studio.service.FeatureGuardService;
 import com.agentplatform.studio.service.ToolService;
 import com.agentplatform.studio.util.JsonUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,12 +33,14 @@ public class ToolController {
 
     private final ToolService  toolService;
     private final ObjectMapper objectMapper;
+    private final FeatureGuardService featureGuard;
 
     @GetMapping
     public ApiResponse<PageResponse<ToolDto>> list(
             @AuthenticationPrincipal AuthContext auth,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        auth.requirePermission("tool:read");
         var result = toolService.list(auth, PageRequest.of(page, size, Sort.by("updatedAt").descending()));
         var mapped = result.map(t -> ToolDto.from(t, objectMapper));
         return ApiResponse.ok(PageResponse.of(mapped));
@@ -45,6 +48,7 @@ public class ToolController {
 
     @GetMapping("/{id}")
     public ApiResponse<ToolDto> get(@AuthenticationPrincipal AuthContext auth, @PathVariable UUID id) {
+        auth.requirePermission("tool:read");
         return ApiResponse.ok(ToolDto.from(toolService.get(auth, id), objectMapper));
     }
 
@@ -52,7 +56,8 @@ public class ToolController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ToolDto> create(@AuthenticationPrincipal AuthContext auth,
                                        @Valid @RequestBody CreateToolRequest req) {
-        auth.requirePermission("agent_studio.tools");
+        auth.requirePermission("tool:create");
+        featureGuard.require(auth, "agent_studio.tools");
         var tool = toolService.create(auth,
                 req.getName(),
                 req.getDescription(),
@@ -68,7 +73,8 @@ public class ToolController {
     public ApiResponse<ToolDto> update(@AuthenticationPrincipal AuthContext auth,
                                        @PathVariable UUID id,
                                        @RequestBody UpdateToolRequest req) {
-        auth.requirePermission("agent_studio.tools");
+        auth.requirePermission("tool:update");
+        featureGuard.require(auth, "agent_studio.tools");
         var tool = toolService.update(auth, id,
                 req.getName(),
                 req.getDescription(),
@@ -82,7 +88,8 @@ public class ToolController {
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> archive(@AuthenticationPrincipal AuthContext auth, @PathVariable UUID id) {
-        auth.requirePermission("agent_studio.tools");
+        auth.requirePermission("tool:delete");
+        featureGuard.require(auth, "agent_studio.tools");
         toolService.archive(auth, id);
         return ApiResponse.ok();
     }

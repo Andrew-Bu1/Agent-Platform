@@ -4,6 +4,7 @@ import com.agentplatform.common.security.AuthContext;
 import com.agentplatform.common.web.ApiResponse;
 import com.agentplatform.common.web.PageResponse;
 import com.agentplatform.studio.service.AgentService;
+import com.agentplatform.studio.service.FeatureGuardService;
 import com.agentplatform.studio.util.JsonUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
@@ -32,12 +33,14 @@ public class AgentController {
 
     private final AgentService agentService;
     private final ObjectMapper objectMapper;
+    private final FeatureGuardService featureGuard;
 
     @GetMapping
     public ApiResponse<PageResponse<AgentDto>> list(
             @AuthenticationPrincipal AuthContext auth,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        auth.requirePermission("agent:read");
         var result = agentService.list(auth, PageRequest.of(page, size, Sort.by("updatedAt").descending()));
         var mapped = result.map(a -> AgentDto.from(a, objectMapper));
         return ApiResponse.ok(PageResponse.of(mapped));
@@ -45,6 +48,7 @@ public class AgentController {
 
     @GetMapping("/{id}")
     public ApiResponse<AgentDto> get(@AuthenticationPrincipal AuthContext auth, @PathVariable UUID id) {
+        auth.requirePermission("agent:read");
         return ApiResponse.ok(AgentDto.from(agentService.get(auth, id), objectMapper));
     }
 
@@ -52,7 +56,8 @@ public class AgentController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<AgentDto> create(@AuthenticationPrincipal AuthContext auth,
                                         @Valid @RequestBody CreateAgentRequest req) {
-        auth.requirePermission("agent_studio.agents");
+        auth.requirePermission("agent:create");
+        featureGuard.require(auth, "agent_studio.agents");
         var agent = agentService.create(auth,
                 req.getName(),
                 req.getDescription(),
@@ -67,7 +72,8 @@ public class AgentController {
     public ApiResponse<AgentDto> update(@AuthenticationPrincipal AuthContext auth,
                                         @PathVariable UUID id,
                                         @RequestBody UpdateAgentRequest req) {
-        auth.requirePermission("agent_studio.agents");
+        auth.requirePermission("agent:update");
+        featureGuard.require(auth, "agent_studio.agents");
         var agent = agentService.update(auth, id,
                 req.getName(),
                 req.getDescription(),
@@ -81,7 +87,8 @@ public class AgentController {
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> archive(@AuthenticationPrincipal AuthContext auth, @PathVariable UUID id) {
-        auth.requirePermission("agent_studio.agents");
+        auth.requirePermission("agent:delete");
+        featureGuard.require(auth, "agent_studio.agents");
         agentService.archive(auth, id);
         return ApiResponse.ok();
     }

@@ -5,10 +5,12 @@ import com.agentplatform.common.exception.ErrorCode;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -94,14 +96,25 @@ public class AihubProxyService {
      * The body must include {@code "stream": true}.
      */
     @Async("sseProxyExecutor")
-    public void chatStream(String path, Object body, SseEmitter emitter) {
+    public void chatStream(String path, Object body, String authorization, SseEmitter emitter) {
         try {
             aihubClient.post()
                     .uri(path)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.TEXT_EVENT_STREAM)
+                    .header(HttpHeaders.AUTHORIZATION, authorization)
                     .body(body)
                     .exchange((req, resp) -> {
+                        if (!resp.getStatusCode().is2xxSuccessful()) {
+                            String errorBody = StreamUtils.copyToString(resp.getBody(), StandardCharsets.UTF_8);
+                            if (errorBody.isBlank()) {
+                                errorBody = "{\"detail\":\"AIHub returned HTTP " + resp.getStatusCode().value() + "\"}";
+                            }
+                            emitter.send(SseEmitter.event()
+                                    .name("error")
+                                    .data(errorBody, MediaType.APPLICATION_JSON));
+                            return null;
+                        }
                         try (BufferedReader reader = new BufferedReader(
                                 new InputStreamReader(resp.getBody(), StandardCharsets.UTF_8))) {
                             String line;
@@ -109,6 +122,9 @@ public class AihubProxyService {
                                 if (line.startsWith("data:")) {
                                     String data = line.substring("data:".length()).trim();
                                     emitter.send(SseEmitter.event().data(data, MediaType.TEXT_PLAIN));
+                                    if ("[DONE]".equals(data)) {
+                                        break;
+                                    }
                                 }
                             }
                         } catch (IOException e) {

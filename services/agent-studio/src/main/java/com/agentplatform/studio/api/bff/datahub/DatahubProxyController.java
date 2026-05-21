@@ -97,6 +97,13 @@ public class DatahubProxyController {
         return ApiResponse.ok(datahubProxy.delete("/documents/" + id));
     }
 
+    @PutMapping("/documents/{id}/active-ingestion")
+    public ApiResponse<JsonNode> setActiveIngestion(@AuthenticationPrincipal AuthContext auth,
+                                       @PathVariable UUID id,
+                                       @RequestBody JsonNode body) {
+        return ApiResponse.ok(datahubProxy.put("/documents/" + id + "/active-ingestion", body));
+    }
+
     // ── Ingestions ────────────────────────────────────────────────────────────
 
     @PostMapping("/documents/{documentId}/ingestions")

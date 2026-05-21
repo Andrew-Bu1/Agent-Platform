@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # ─── Build stage ─────────────────────────────────────────────────────────────
 # Build context must be the repo root so libs/java/common is available.
 # docker build -f services/agent-studio/Dockerfile -t agent-studio .
@@ -5,22 +7,26 @@ FROM maven:3.9-eclipse-temurin-17-alpine AS builder
 
 WORKDIR /app
 
+# Copy only poms first — this layer is cached until a pom.xml changes
 COPY pom.xml ./
-
-# All sibling module poms must exist so Maven can read the root pom.xml
 COPY libs/java/pom.xml                    libs/java/pom.xml
 COPY libs/java/common/pom.xml             libs/java/common/pom.xml
 COPY services/iam-service/pom.xml         services/iam-service/pom.xml
 COPY services/agent-studio/pom.xml        services/agent-studio/pom.xml
 
-RUN mvn -pl libs/java/common,services/agent-studio \
-           -am dependency:go-offline -q
+# Download all dependencies — cached independently of source changes
+RUN --mount=type=cache,id=agent-studio-maven,target=/root/.m2,sharing=shared \
+    mvn -B -ntp -pl libs/java/common,services/agent-studio \
+        -am dependency:go-offline
 
+# Copy full source
 COPY libs/java/common/src libs/java/common/src
 COPY services/agent-studio/src services/agent-studio/src
 
-RUN mvn -pl libs/java/common,services/agent-studio \
-           -am package -DskipTests -q
+# Build (skip tests — run them in CI separately)
+RUN --mount=type=cache,id=agent-studio-maven,target=/root/.m2,sharing=shared \
+    mvn -B -ntp -pl libs/java/common,services/agent-studio \
+        -am package -Dmaven.test.skip=true
 
 # ─── Runtime stage ───────────────────────────────────────────────────────────
 FROM eclipse-temurin:17-jre-alpine AS runtime

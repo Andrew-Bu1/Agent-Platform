@@ -40,12 +40,13 @@ public class DatahubProxyService {
 
     public JsonNode post(String path, Object body) {
         try {
-            return datahubClient.post()
+            var spec = datahubClient.post()
                     .uri(path)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(JsonNode.class);
+                    .contentType(MediaType.APPLICATION_JSON);
+            if (body != null) {
+                return spec.body(body).retrieve().body(JsonNode.class);
+            }
+            return spec.retrieve().body(JsonNode.class);
         } catch (HttpClientErrorException e) {
             throw mapClientError(e);
         }
