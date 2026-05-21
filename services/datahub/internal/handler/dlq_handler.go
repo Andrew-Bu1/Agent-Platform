@@ -2,9 +2,11 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
+	"services/datahub/internal/auth"
 	"services/datahub/internal/queue"
 )
 
@@ -12,12 +14,17 @@ import (
 // Routes are registered under /ingestions/dlq and are protected by the same
 // JWT middleware as all other DataHub endpoints.
 type DLQHandler struct {
-	q      *queue.RedisQueue
-	dlqKey string
+	q          *queue.RedisQueue
+	dlqKeyBase string
 }
 
 func NewDLQHandler(q *queue.RedisQueue, dlqKey string) *DLQHandler {
-	return &DLQHandler{q: q, dlqKey: dlqKey}
+	return &DLQHandler{q: q, dlqKeyBase: dlqKey}
+}
+
+// tenantKey returns a tenant-scoped Redis key: "<base>:<tenantID>".
+func (h *DLQHandler) tenantKey(r *http.Request) string {
+	return fmt.Sprintf("%s:%s", h.dlqKeyBase, auth.TenantID(r.Context()))
 }
 
 func (h *DLQHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -29,6 +36,11 @@ func (h *DLQHandler) RegisterRoutes(mux *http.ServeMux) {
 // List returns pending DLQ entries without removing them.
 // Query param: limit (default 100, max 1000).
 func (h *DLQHandler) List(w http.ResponseWriter, r *http.Request) {
+	if !auth.HasPermission(r.Context(), "datasource:ingest") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	limit := int64(100)
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 && n <= 1000 {
@@ -36,13 +48,14 @@ func (h *DLQHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	total, err := h.q.DLQLen(r.Context(), h.dlqKey)
+	key := h.tenantKey(r)
+	total, err := h.q.DLQLen(r.Context(), key)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	entries, err := h.q.DLQList(r.Context(), h.dlqKey, limit)
+	entries, err := h.q.DLQList(r.Context(), key, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -56,7 +69,12 @@ func (h *DLQHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Replay pushes all DLQ entries back to their original source queues.
 func (h *DLQHandler) Replay(w http.ResponseWriter, r *http.Request) {
-	replayed, err := h.q.DLQReplay(r.Context(), h.dlqKey)
+	if !auth.HasPermission(r.Context(), "datasource:ingest") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
+	replayed, err := h.q.DLQReplay(r.Context(), h.tenantKey(r))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -71,7 +89,12 @@ func (h *DLQHandler) Replay(w http.ResponseWriter, r *http.Request) {
 
 // Clear deletes all entries from the dead-letter queue.
 func (h *DLQHandler) Clear(w http.ResponseWriter, r *http.Request) {
-	if err := h.q.DLQClear(r.Context(), h.dlqKey); err != nil {
+	if !auth.HasPermission(r.Context(), "datasource:ingest") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
+	if err := h.q.DLQClear(r.Context(), h.tenantKey(r)); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

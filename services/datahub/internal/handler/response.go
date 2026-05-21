@@ -22,6 +22,15 @@ func writeInternalError(w http.ResponseWriter, msg string, err error) {
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": msg})
 }
 
+// bearerToken extracts the raw token from the Authorization header (without "Bearer " prefix).
+func bearerToken(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	if len(h) > 7 && h[:7] == "Bearer " {
+		return h[7:]
+	}
+	return ""
+}
+
 // LoggingMiddleware logs method, path, status code and latency for every request.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -32,6 +32,11 @@ func (h *ChunkHandler) RegisterRoutes(mux *http.ServeMux) {
 // @Failure      500           {object}  map[string]string
 // @Router       /ingestions/{ingestion_id}/chunks [get]
 func (h *ChunkHandler) ListByIngestion(w http.ResponseWriter, r *http.Request) {
+	if !auth.HasPermission(r.Context(), "datasource:read") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	ingestionID, err := uuid.Parse(r.PathValue("ingestion_id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid ingestion_id")
@@ -57,6 +62,11 @@ func (h *ChunkHandler) ListByIngestion(w http.ResponseWriter, r *http.Request) {
 // @Failure      404  {object}  map[string]string
 // @Router       /chunks/{id} [get]
 func (h *ChunkHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	if !auth.HasPermission(r.Context(), "datasource:read") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")

@@ -12,11 +12,12 @@ import (
 )
 
 type DatasourceHandler struct {
-	svc *service.DatasourceService
+	svc          *service.DatasourceService
+	featureGuard *auth.FeatureGuard
 }
 
-func NewDatasourceHandler(svc *service.DatasourceService) *DatasourceHandler {
-	return &DatasourceHandler{svc: svc}
+func NewDatasourceHandler(svc *service.DatasourceService, fg *auth.FeatureGuard) *DatasourceHandler {
+	return &DatasourceHandler{svc: svc, featureGuard: fg}
 }
 
 func (h *DatasourceHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -42,8 +43,12 @@ func (h *DatasourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	workspaceID := auth.WorkspaceID(r.Context())
 	createdByUserID := auth.CreatedByUserID(r.Context())
 
-	if !auth.HasPermission(r.Context(), "datahub.datasources") {
-		writeError(w, http.StatusForbidden, "feature not enabled: datahub.datasources")
+	if !auth.HasPermission(r.Context(), "datasource:create") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.datasources"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
 
@@ -77,6 +82,11 @@ func (h *DatasourceHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "datasource:read") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	datasources, err := h.svc.GetAll(r.Context(), tenantID, workspaceID)
 	if err != nil {
 		writeInternalError(w, "failed to retrieve datasources", err)
@@ -98,6 +108,11 @@ func (h *DatasourceHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 func (h *DatasourceHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "datasource:read") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
 
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
@@ -129,8 +144,12 @@ func (h *DatasourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
-	if !auth.HasPermission(r.Context(), "datahub.datasources") {
-		writeError(w, http.StatusForbidden, "feature not enabled: datahub.datasources")
+	if !auth.HasPermission(r.Context(), "datasource:update") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.datasources"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
 
@@ -167,8 +186,12 @@ func (h *DatasourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
-	if !auth.HasPermission(r.Context(), "datahub.datasources") {
-		writeError(w, http.StatusForbidden, "feature not enabled: datahub.datasources")
+	if !auth.HasPermission(r.Context(), "datasource:delete") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.datasources"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
 

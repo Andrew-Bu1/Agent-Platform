@@ -13,11 +13,12 @@ import (
 )
 
 type SearchHandler struct {
-	svc *service.SearchService
+	svc          *service.SearchService
+	featureGuard *auth.FeatureGuard
 }
 
-func NewSearchHandler(svc *service.SearchService) *SearchHandler {
-	return &SearchHandler{svc: svc}
+func NewSearchHandler(svc *service.SearchService, fg *auth.FeatureGuard) *SearchHandler {
+	return &SearchHandler{svc: svc, featureGuard: fg}
 }
 
 func (h *SearchHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -37,13 +38,18 @@ func (h *SearchHandler) RegisterRoutes(mux *http.ServeMux) {
 // @Failure      500   {object}  map[string]string
 // @Router       /datasources/{id}/search [post]
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
-	if !auth.HasPermission(r.Context(), "datahub.search") {
-		writeError(w, http.StatusForbidden, "feature not enabled: datahub.search")
+	if !auth.HasPermission(r.Context(), "datasource:search") {
+		writeError(w, http.StatusForbidden, "permission denied")
 		return
 	}
 
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.search"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
 
 	datasourceID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
