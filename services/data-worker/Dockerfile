@@ -6,10 +6,11 @@ WORKDIR /app
 # Copy module manifests only — layer is cached unless go.mod/go.sum change
 COPY go.work go.work.sum ./
 COPY libs/go/go.mod libs/go/go.sum ./libs/go/
-COPY services/agent-orchestrator/go.mod services/agent-orchestrator/go.sum ./services/agent-orchestrator/
-COPY services/agent-worker/go.mod services/agent-worker/go.sum ./services/agent-worker/
 COPY services/data-worker/go.mod services/data-worker/go.sum ./services/data-worker/
-COPY services/datahub/go.mod services/datahub/go.sum ./services/datahub/
+# go.work references these modules — go work sync needs their go.mod to exist
+COPY services/agent-orchestrator/go.mod ./services/agent-orchestrator/
+COPY services/agent-worker/go.mod ./services/agent-worker/
+COPY services/datahub/go.mod ./services/datahub/
 
 RUN go work sync
 
