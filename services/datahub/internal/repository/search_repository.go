@@ -58,9 +58,11 @@ func (r *SearchRepository) SearchByVector(
 		SELECT e.chunk_id, c.content, 1 - (e.embedding <=> $1::vector) AS score
 		FROM %s e
 		JOIN chunks c ON c.id = e.chunk_id
+		JOIN documents d ON d.id = c.document_id
 		WHERE e.datasource_id = $2
 		  AND e.tenant_id = $3
 		  AND e.workspace_id = $4
+		  AND c.ingestion_id = d.active_ingestion_id
 		ORDER BY e.embedding <=> $1::vector
 		LIMIT $5`, table)
 

@@ -137,6 +137,22 @@ func (s *DocumentService) Update(ctx context.Context, id uuid.UUID, req model.Up
 	return &resp, nil
 }
 
+func (s *DocumentService) SetActiveIngestion(ctx context.Context, documentID, ingestionID uuid.UUID, tenantID, workspaceID uuid.UUID) (*model.DocumentResponse, error) {
+	// Verify the document belongs to the caller's tenant/workspace.
+	if _, err := s.repo.GetByID(ctx, documentID, tenantID, workspaceID); err != nil {
+		return nil, fmt.Errorf("document not found: %w", err)
+	}
+	if err := s.repo.SetActiveIngestion(ctx, documentID, &ingestionID, tenantID, workspaceID); err != nil {
+		return nil, err
+	}
+	doc, err := s.repo.GetByID(ctx, documentID, tenantID, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	resp := doc.ToResponse()
+	return &resp, nil
+}
+
 func (s *DocumentService) Delete(ctx context.Context, id, tenantID, workspaceID uuid.UUID) error {
 	return s.repo.Delete(ctx, id, tenantID, workspaceID)
 }

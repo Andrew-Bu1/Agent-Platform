@@ -45,7 +45,7 @@ func (r *DocumentRepository) Insert(ctx context.Context, d *model.Document) erro
 
 func (r *DocumentRepository) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.Document, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, created_by_user_id, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, active_ingestion_id, created_by_user_id, created_at, updated_at
 		FROM documents
 		WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
@@ -62,6 +62,7 @@ func (r *DocumentRepository) GetByID(ctx context.Context, id, tenantID, workspac
 		&d.StoragePath,
 		&d.Metadata,
 		&d.Status,
+		&d.ActiveIngestionID,
 		&d.CreatedByUserID,
 		&d.CreatedAt,
 		&d.UpdatedAt,
@@ -73,7 +74,7 @@ func (r *DocumentRepository) GetByID(ctx context.Context, id, tenantID, workspac
 
 func (r *DocumentRepository) GetByDatasourceID(ctx context.Context, datasourceID, tenantID, workspaceID uuid.UUID) ([]*model.Document, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, created_by_user_id, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, active_ingestion_id, created_by_user_id, created_at, updated_at
 		FROM documents
 		WHERE datasource_id = $1 AND tenant_id = $2 AND workspace_id = $3
 		ORDER BY created_at DESC`
@@ -97,6 +98,7 @@ func (r *DocumentRepository) GetByDatasourceID(ctx context.Context, datasourceID
 			&d.StoragePath,
 			&d.Metadata,
 			&d.Status,
+			&d.ActiveIngestionID,
 			&d.CreatedByUserID,
 			&d.CreatedAt,
 			&d.UpdatedAt,
@@ -130,7 +132,7 @@ func (r *DocumentRepository) Update(ctx context.Context, d *model.Document) erro
 
 func (r *DocumentRepository) FindByHash(ctx context.Context, datasourceID, tenantID, workspaceID uuid.UUID, fileHash string) (*model.Document, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, created_by_user_id, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, active_ingestion_id, created_by_user_id, created_at, updated_at
 		FROM documents
 		WHERE datasource_id = $1 AND file_hash = $2 AND tenant_id = $3 AND workspace_id = $4
 		LIMIT 1`
@@ -148,6 +150,7 @@ func (r *DocumentRepository) FindByHash(ctx context.Context, datasourceID, tenan
 		&d.StoragePath,
 		&d.Metadata,
 		&d.Status,
+		&d.ActiveIngestionID,
 		&d.CreatedByUserID,
 		&d.CreatedAt,
 		&d.UpdatedAt,
@@ -155,6 +158,19 @@ func (r *DocumentRepository) FindByHash(ctx context.Context, datasourceID, tenan
 		return nil, err
 	}
 	return &d, nil
+}
+
+func (r *DocumentRepository) SetActiveIngestion(ctx context.Context, documentID uuid.UUID, ingestionID *uuid.UUID, tenantID, workspaceID uuid.UUID) error {
+	const q = `
+		UPDATE documents
+		SET active_ingestion_id = $1, updated_at = NOW()
+		WHERE id = $2 AND tenant_id = $3 AND workspace_id = $4`
+
+	_, err := r.db.Exec(ctx, q, ingestionID, documentID, tenantID, workspaceID)
+	if err != nil {
+		return fmt.Errorf("DocumentRepository.SetActiveIngestion: %w", err)
+	}
+	return nil
 }
 
 func (r *DocumentRepository) Delete(ctx context.Context, id, tenantID, workspaceID uuid.UUID) error {

@@ -18,11 +18,12 @@ import (
 const maxUploadBytes = 100 << 20 // 100 MB
 
 type DocumentHandler struct {
-	svc *service.DocumentService
+	svc          *service.DocumentService
+	featureGuard *auth.FeatureGuard
 }
 
-func NewDocumentHandler(svc *service.DocumentService) *DocumentHandler {
-	return &DocumentHandler{svc: svc}
+func NewDocumentHandler(svc *service.DocumentService, fg *auth.FeatureGuard) *DocumentHandler {
+	return &DocumentHandler{svc: svc, featureGuard: fg}
 }
 
 func (h *DocumentHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -30,6 +31,7 @@ func (h *DocumentHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /datasources/{datasource_id}/documents", h.ListByDatasource)
 	mux.HandleFunc("GET /documents/{id}", h.GetByID)
 	mux.HandleFunc("PUT /documents/{id}", h.Update)
+	mux.HandleFunc("PUT /documents/{id}/active-ingestion", h.SetActiveIngestion)
 	mux.HandleFunc("DELETE /documents/{id}", h.Delete)
 }
 
@@ -51,6 +53,16 @@ func (h *DocumentHandler) RegisterRoutes(mux *http.ServeMux) {
 // @Failure      500  {object}  map[string]string
 // @Router       /datasources/{datasource_id}/documents [post]
 func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	if !auth.HasPermission(r.Context(), "datasource:ingest") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	tenantID := auth.TenantID(r.Context())
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.datasources"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
 	datasourceID, err := uuid.Parse(r.PathValue("datasource_id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid datasource_id")
@@ -97,7 +109,6 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		Metadata:     metadata,
 	}
 
-	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 	createdByUserID := auth.CreatedByUserID(r.Context())
 
@@ -127,6 +138,11 @@ func (h *DocumentHandler) ListByDatasource(w http.ResponseWriter, r *http.Reques
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "datasource:read") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	datasourceID, err := uuid.Parse(r.PathValue("datasource_id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid datasource_id")
@@ -154,6 +170,11 @@ func (h *DocumentHandler) ListByDatasource(w http.ResponseWriter, r *http.Reques
 func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "datasource:read") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
 
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
@@ -185,6 +206,15 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "datasource:update") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.datasources"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -206,6 +236,60 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, doc)
 }
 
+// SetActiveIngestion godoc
+// @Summary      Set the active ingestion for a document
+// @Description  Marks the given ingestion as the active one; only its chunks will be included in vector search.
+// @Tags         documents
+// @Accept       json
+// @Produce      json
+// @Param        id    path      string  true  "Document ID"
+// @Param        body  body      object  true  "{ \"ingestion_id\": \"<uuid>\" }"
+// @Success      200   {object}  model.DocumentResponse
+// @Failure      400   {object}  map[string]string
+// @Failure      403   {object}  map[string]string
+// @Failure      500   {object}  map[string]string
+// @Router       /documents/{id}/active-ingestion [put]
+func (h *DocumentHandler) SetActiveIngestion(w http.ResponseWriter, r *http.Request) {
+	tenantID := auth.TenantID(r.Context())
+	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "datasource:ingest") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.datasources"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	documentID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var body struct {
+		IngestionID string `json:"ingestion_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IngestionID == "" {
+		writeError(w, http.StatusBadRequest, "ingestion_id is required")
+		return
+	}
+	ingestionID, err := uuid.Parse(body.IngestionID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid ingestion_id")
+		return
+	}
+
+	doc, err := h.svc.SetActiveIngestion(r.Context(), documentID, ingestionID, tenantID, workspaceID)
+	if err != nil {
+		writeInternalError(w, "failed to set active ingestion", err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, doc)
+}
+
 // Delete godoc
 // @Summary      Delete a document
 // @Tags         documents
@@ -217,6 +301,15 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "datasource:delete") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.datasources"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
 
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
