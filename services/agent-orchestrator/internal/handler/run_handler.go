@@ -41,6 +41,11 @@ func (h *RunHandler) Create(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	var req model.CreateRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -66,6 +71,11 @@ func (h *RunHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	id, err := parseUUIDParam(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid run id")
@@ -85,6 +95,11 @@ func (h *RunHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 func (h *RunHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
 
 	id, err := parseUUIDParam(r, "id")
 	if err != nil {
@@ -107,6 +122,11 @@ func (h *RunHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 func (h *RunHandler) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
 
 	id, err := parseUUIDParam(r, "id")
 	if err != nil {
@@ -153,6 +173,11 @@ func (h *RunHandler) ResumeHumanReview(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	runID, err := parseUUIDParam(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid run id")
@@ -185,6 +210,11 @@ func (h *RunHandler) List(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	size, _ := strconv.Atoi(r.URL.Query().Get("size"))
 
@@ -202,6 +232,11 @@ func (h *RunHandler) ListPendingReview(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	items, err := h.svc.ListPendingReview(r.Context(), tenantID, workspaceID)
 	if err != nil {
 		writeInternalError(w, "failed to list pending review runs", err)
@@ -215,6 +250,11 @@ func (h *RunHandler) ListPendingReview(w http.ResponseWriter, r *http.Request) {
 func (h *RunHandler) ListNodeRuns(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
 
 	id, err := parseUUIDParam(r, "id")
 	if err != nil {

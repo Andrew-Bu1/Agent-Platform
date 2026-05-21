@@ -33,6 +33,11 @@ func (h *ThreadHandler) Create(w http.ResponseWriter, r *http.Request) {
 	workspaceID := auth.WorkspaceID(r.Context())
 	userID := callerUserID(r.Context())
 
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	var req model.CreateThreadRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -50,6 +55,11 @@ func (h *ThreadHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *ThreadHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
 
 	id, err := parseUUIDParam(r, "id")
 	if err != nil {
@@ -70,6 +80,11 @@ func (h *ThreadHandler) List(w http.ResponseWriter, r *http.Request) {
 	workspaceID := auth.WorkspaceID(r.Context())
 	limit, offset := parsePagination(r)
 
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+
 	threads, err := h.svc.List(r.Context(), tenantID, workspaceID, limit, offset)
 	if err != nil {
 		writeInternalError(w, "failed to list threads", err)
@@ -86,6 +101,11 @@ func (h *ThreadHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
 	limit, offset := parsePagination(r)
+
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
 
 	id, err := parseUUIDParam(r, "id")
 	if err != nil {
@@ -104,6 +124,11 @@ func (h *ThreadHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 func (h *ThreadHandler) ListPendingReview(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantID(r.Context())
 	workspaceID := auth.WorkspaceID(r.Context())
+
+	if !auth.HasPermission(r.Context(), "flow:run") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
 
 	runs, err := h.svc.ListPendingHumanReview(r.Context(), tenantID, workspaceID)
 	if err != nil {
