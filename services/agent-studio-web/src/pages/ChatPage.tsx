@@ -49,21 +49,18 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function extractEvent(raw: string): { type: string; data: Record<string, unknown> } | null {
-  const normalized = raw
-    .split('\n')
-    .map((line) => line.startsWith('data:') ? line.slice(5).trimStart() : line)
-    .join('\n')
-    .trim();
+  if (!raw.trim()) return null;
 
-  if (!normalized) return null;
-
-  const eventMatch = /(?:^|\n)event:\s*([^\n]+)/.exec(normalized);
-  const dataMatch = /(?:^|\n)data:\s*([\s\S]+)/.exec(normalized);
+  // Backend sends proper SSE: "event: <type>\ndata: <json>"
+  // Parse event type and data lines independently (do NOT strip data: before matching).
+  const eventMatch = /(?:^|\n)event:\s*([^\n]+)/.exec(raw);
+  const dataMatch = /(?:^|\n)data:\s*([\s\S]+)/.exec(raw);
   const eventType = eventMatch?.[1]?.trim();
-  const dataRaw = dataMatch?.[1]?.trim() ?? normalized;
+  const dataRaw = dataMatch?.[1]?.trim() ?? raw.trim();
 
   try {
     const parsed = JSON.parse(dataRaw);
+    // Envelope format: {type, data} (not currently used by backend but handle gracefully)
     if (parsed?.type && parsed?.data !== undefined) {
       return { type: String(parsed.type), data: asRecord(parsed.data) };
     }
