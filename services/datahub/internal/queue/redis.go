@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"libs/go/common/config"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -23,16 +24,30 @@ type IngestionJob struct {
 	ChunkStrategy  string          `json:"chunk_strategy"`
 	ChunkConfig    json.RawMessage `json:"chunk_config"`
 	EmbeddingModel string          `json:"embedding_model"`
+	Mode           string          `json:"mode"` // "full_pipeline" | "chunk_only"
+}
+
+// EmbedJob is pushed directly to the embedding queue when the /embed endpoint
+// is called to embed an existing chunked ingestion.
+type EmbedJob struct {
+	IngestionID    string `json:"ingestion_id"`
+	ChunkID        string `json:"chunk_id"`
+	DatasourceID   string `json:"datasource_id"`
+	TenantID       string `json:"tenant_id"`
+	WorkspaceID    string `json:"workspace_id"`
+	Content        string `json:"content"`
+	EmbeddingModel string `json:"embedding_model"`
 }
 
 
 
 type RedisQueue struct {
-	client 			*redis.Client
-	IngestionQueue 	string
+	client         *redis.Client
+	IngestionQueue string
+	EmbedQueue     string
 }
 
-func NewRedisQueue(cfg *config.RedisConfig, queueKey string) *RedisQueue {
+func NewRedisQueue(cfg *config.RedisConfig, queueKey, embedQueue string) *RedisQueue {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	client := redis.NewClient(&redis.Options{
 		Addr:     addr,
@@ -40,7 +55,7 @@ func NewRedisQueue(cfg *config.RedisConfig, queueKey string) *RedisQueue {
 		Password: cfg.Password,
 		DB:       cfg.DB,
 	})
-	return &RedisQueue{client: client, IngestionQueue: queueKey}
+	return &RedisQueue{client: client, IngestionQueue: queueKey, EmbedQueue: embedQueue}
 }
 
 // Publish pushes an IngestionJob as JSON onto the right end of the Redis list.
@@ -52,6 +67,24 @@ func (q *RedisQueue) Publish(ctx context.Context, job IngestionJob) error {
 	}
 	if err := q.client.RPush(ctx, q.IngestionQueue, payload).Err(); err != nil {
 		return fmt.Errorf("queue.Publish rpush: %w", err)
+	}
+	return nil
+}
+
+// SetCounter sets a Redis key to val with a 24-hour TTL.
+// Used to record how many embed jobs are expected for an ingestion.
+func (q *RedisQueue) SetCounter(ctx context.Context, key string, val int64) error {
+	return q.client.Set(ctx, key, val, 24*time.Hour).Err()
+}
+
+// PublishEmbed pushes an EmbedJob to the embedding queue.
+func (q *RedisQueue) PublishEmbed(ctx context.Context, job EmbedJob) error {
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return fmt.Errorf("queue.PublishEmbed marshal: %w", err)
+	}
+	if err := q.client.RPush(ctx, q.EmbedQueue, payload).Err(); err != nil {
+		return fmt.Errorf("queue.PublishEmbed rpush: %w", err)
 	}
 	return nil
 }

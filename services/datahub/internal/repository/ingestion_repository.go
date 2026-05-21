@@ -20,14 +20,15 @@ func NewIngestionRepository(db *pgxpool.Pool) *IngestionRepository {
 
 func (r *IngestionRepository) Insert(ctx context.Context, i *model.Ingestion) error {
 	const q = `
-		INSERT INTO ingestions (id, tenant_id, workspace_id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+		INSERT INTO ingestions (id, tenant_id, workspace_id, document_id, mode, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 
 	_, err := r.db.Exec(ctx, q,
 		i.ID,
 		i.TenantID,
 		i.WorkspaceID,
 		i.DocumentID,
+		i.Mode,
 		i.ChunkStrategy,
 		i.ChunkConfig,
 		i.EmbeddingModel,
@@ -43,7 +44,7 @@ func (r *IngestionRepository) Insert(ctx context.Context, i *model.Ingestion) er
 
 func (r *IngestionRepository) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.Ingestion, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, document_id, mode, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
 		FROM ingestions
 		WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
@@ -55,6 +56,7 @@ func (r *IngestionRepository) GetByID(ctx context.Context, id, tenantID, workspa
 		&i.TenantID,
 		&i.WorkspaceID,
 		&i.DocumentID,
+		&i.Mode,
 		&i.ChunkStrategy,
 		&i.ChunkConfig,
 		&i.EmbeddingModel,
@@ -69,7 +71,7 @@ func (r *IngestionRepository) GetByID(ctx context.Context, id, tenantID, workspa
 
 func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID, tenantID, workspaceID uuid.UUID) ([]*model.Ingestion, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, document_id, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, document_id, mode, chunk_strategy, chunk_config, embedding_model, status, created_at, updated_at
 		FROM ingestions
 		WHERE document_id = $1 AND tenant_id = $2 AND workspace_id = $3
 		ORDER BY created_at DESC`
@@ -88,6 +90,7 @@ func (r *IngestionRepository) GetByDocumentID(ctx context.Context, documentID, t
 			&i.TenantID,
 			&i.WorkspaceID,
 			&i.DocumentID,
+			&i.Mode,
 			&i.ChunkStrategy,
 			&i.ChunkConfig,
 			&i.EmbeddingModel,
@@ -108,6 +111,16 @@ func (r *IngestionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	_, err := r.db.Exec(ctx, q, status, id)
 	if err != nil {
 		return fmt.Errorf("IngestionRepository.UpdateStatus: %w", err)
+	}
+	return nil
+}
+
+func (r *IngestionRepository) UpdateEmbeddingModel(ctx context.Context, id uuid.UUID, embeddingModel string) error {
+	const q = `UPDATE ingestions SET embedding_model = $1, updated_at = NOW() WHERE id = $2`
+
+	_, err := r.db.Exec(ctx, q, embeddingModel, id)
+	if err != nil {
+		return fmt.Errorf("IngestionRepository.UpdateEmbeddingModel: %w", err)
 	}
 	return nil
 }

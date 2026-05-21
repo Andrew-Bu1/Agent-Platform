@@ -19,17 +19,19 @@ const (
 )
 
 type IngestionHandler struct {
-	svc *service.IngestionService
+	svc          *service.IngestionService
+	featureGuard *auth.FeatureGuard
 }
 
-func NewIngestionHandler(svc *service.IngestionService) *IngestionHandler {
-	return &IngestionHandler{svc: svc}
+func NewIngestionHandler(svc *service.IngestionService, fg *auth.FeatureGuard) *IngestionHandler {
+	return &IngestionHandler{svc: svc, featureGuard: fg}
 }
 
 func (h *IngestionHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /documents/{document_id}/ingestions", h.Create)
 	mux.HandleFunc("GET /documents/{document_id}/ingestions", h.ListByDocument)
 	mux.HandleFunc("GET /ingestions/{id}", h.GetByID)
+	mux.HandleFunc("POST /ingestions/{id}/embed", h.TriggerEmbed)
 	mux.HandleFunc("DELETE /ingestions/{id}", h.Delete)
 }
 
@@ -46,8 +48,13 @@ func (h *IngestionHandler) RegisterRoutes(mux *http.ServeMux) {
 // @Failure      500          {object}  map[string]string
 // @Router       /documents/{document_id}/ingestions [post]
 func (h *IngestionHandler) Create(w http.ResponseWriter, r *http.Request) {
-	if !auth.HasPermission(r.Context(), "datahub.ingestion") {
-		writeError(w, http.StatusForbidden, "feature not enabled: datahub.ingestion")
+	if !auth.HasPermission(r.Context(), "datasource:ingest") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	tenantID := auth.TenantID(r.Context())
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.ingestion"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
 
@@ -74,9 +81,20 @@ func (h *IngestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid chunk_strategy")
 		return
 	}
-	
-	if req.EmbeddingModel == "" {
-		writeError(w, http.StatusBadRequest, "embedding_model is required")
+
+	mode := req.Mode
+	if mode == "" {
+		mode = "full_pipeline"
+	}
+	if mode != "full_pipeline" && mode != "chunk_only" {
+		writeError(w, http.StatusBadRequest, "invalid mode: must be 'full_pipeline' or 'chunk_only'")
+		return
+	}
+	req.Mode = mode
+
+	// embedding_model is required for full_pipeline, optional for chunk_only.
+	if mode == "full_pipeline" && req.EmbeddingModel == "" {
+		writeError(w, http.StatusBadRequest, "embedding_model is required for full_pipeline mode")
 		return
 	}
 
@@ -149,6 +167,58 @@ func (h *IngestionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ing)
 }
 
+// TriggerEmbed godoc
+// @Summary      Trigger embedding for a chunked ingestion
+// @Description  Fetches all chunks for an ingestion with status "chunked" and pushes EmbedJobs to the embedding queue.
+// @Tags         ingestions
+// @Accept       json
+// @Produce      json
+// @Param        id    path      string                        true  "Ingestion ID"
+// @Param        body  body      model.TriggerEmbedRequest     true  "Embedding config"
+// @Success      202   {object}  model.IngestionResponse
+// @Failure      400   {object}  map[string]string
+// @Failure      500   {object}  map[string]string
+// @Router       /ingestions/{id}/embed [post]
+func (h *IngestionHandler) TriggerEmbed(w http.ResponseWriter, r *http.Request) {
+	if !auth.HasPermission(r.Context(), "datasource:ingest") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	tenantID := auth.TenantID(r.Context())
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.ingestion"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var req model.TriggerEmbedRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.EmbeddingModel == "" {
+		writeError(w, http.StatusBadRequest, "embedding_model is required")
+		return
+	}
+
+	resp, err := h.svc.TriggerEmbed(r.Context(), id, req.EmbeddingModel, auth.TenantID(r.Context()), auth.WorkspaceID(r.Context()))
+	if err != nil {
+		if err.Error() != "" && len(err.Error()) > 0 {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeInternalError(w, "failed to trigger embedding", err)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, resp)
+}
+
 // Delete godoc
 // @Summary      Delete an ingestion
 // @Tags         ingestions
@@ -158,6 +228,16 @@ func (h *IngestionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string
 // @Router       /ingestions/{id} [delete]
 func (h *IngestionHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	if !auth.HasPermission(r.Context(), "datasource:ingest") {
+		writeError(w, http.StatusForbidden, "permission denied")
+		return
+	}
+	tenantID := auth.TenantID(r.Context())
+	if err := h.featureGuard.Require(r.Context(), bearerToken(r), tenantID, "datahub.ingestion"); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")

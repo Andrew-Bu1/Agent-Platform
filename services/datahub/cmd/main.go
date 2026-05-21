@@ -55,23 +55,26 @@ func main() {
 	log.Println("connected to minio")
 
 	// Redis queue
-	redisQueue := queue.NewRedisQueue(cfg.Redis, cfg.IngestionQueue)
+	redisQueue := queue.NewRedisQueue(cfg.Redis, cfg.IngestionQueue, cfg.EmbedQueue)
 	defer redisQueue.Close()
 	log.Println("redis queue ready")
 
 	// Services
 	datasourceSvc := service.NewDatasourceService(datasourceRepo)
 	documentSvc := service.NewDocumentService(documentRepo, datasourceRepo, minioStorage)
-	ingestionSvc := service.NewIngestionService(ingestionRepo, documentRepo, redisQueue)
+	ingestionSvc := service.NewIngestionService(ingestionRepo, documentRepo, chunkRepo, redisQueue)
 	chunkSvc := service.NewChunkService(chunkRepo)
 	searchSvc := service.NewSearchService(repository.NewSearchRepository(pool), datasourceRepo)
 
+	// Feature entitlement guard
+	featureGuard := auth.NewFeatureGuard(cfg.IamURL)
+
 	// Handlers
-	datasourceHandler := handler.NewDatasourceHandler(datasourceSvc)
-	documentHandler := handler.NewDocumentHandler(documentSvc)
-	ingestionHandler := handler.NewIngestionHandler(ingestionSvc)
+	datasourceHandler := handler.NewDatasourceHandler(datasourceSvc, featureGuard)
+	documentHandler := handler.NewDocumentHandler(documentSvc, featureGuard)
+	ingestionHandler := handler.NewIngestionHandler(ingestionSvc, featureGuard)
 	chunkHandler := handler.NewChunkHandler(chunkSvc)
-	searchHandler := handler.NewSearchHandler(searchSvc)
+	searchHandler := handler.NewSearchHandler(searchSvc, featureGuard)
 	dlqHandler := handler.NewDLQHandler(redisQueue, cfg.DLQKey)
 
 	mux := http.NewServeMux()

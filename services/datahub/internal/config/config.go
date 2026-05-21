@@ -9,6 +9,7 @@ type Config struct {
 	Minio          *config.MinioConfig
 	Redis          *config.RedisConfig
 	IngestionQueue string
+	EmbedQueue     string
 	DLQKey         string
 	IamURL         string
 	Port           int
@@ -24,6 +25,7 @@ func Load() *Config {
 		Minio:          minioCfg,
 		Redis:          redisCfg,
 		IngestionQueue: config.GetEnvString("REDIS_INGESTION_QUEUE", "datahub:queue:ingestion"),
+		EmbedQueue:     config.GetEnvString("REDIS_EMBEDDING_QUEUE", "datahub:queue:embedding"),
 		DLQKey:         config.GetEnvString("REDIS_DLQ_KEY", "datahub:queue:dlq"),
 		IamURL:         config.GetEnvString("IAM_URL", "http://iam-service:8080"),
 		Port:           config.GetEnvInt("PORT", 8080),
