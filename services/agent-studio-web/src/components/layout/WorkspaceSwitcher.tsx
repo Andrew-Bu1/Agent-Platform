@@ -225,7 +225,10 @@ export default function WorkspaceSwitcher({ collapsed }: { collapsed: boolean })
                   </div>
                 )}
                 {workspaces.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-6">No workspaces found</p>
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-xs text-gray-400">No workspaces found.</p>
+                    <p className="text-xs text-gray-400 mt-1">Please contact your Tenant Admin to get access.</p>
+                  </div>
                 ) : (
                   workspaces.map((ws) => {
                     const effectiveTenantId = browsingTenant?.id ?? tenantId;
