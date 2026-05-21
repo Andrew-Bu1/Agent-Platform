@@ -1,0 +1,38 @@
+# Build artifacts
+services/iam-service/target/
+services/agent-studio/target/
+**/target/
+
+# Frontend deps and build output
+services/agent-studio-web/node_modules/
+services/agent-studio-web/dist/
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.venv/
+services/aihub/.models/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Secrets and local config
+**/.env
+**/.env.*
+**/*.local
+
+# Docs and thesis (not needed in any image)
+docs/
+thesis/
+
+# IDE
+.idea/
+.vscode/
+**/*.iml
+
+# Go test / coverage artifacts
+**/coverage.out
+**/coverage.html
