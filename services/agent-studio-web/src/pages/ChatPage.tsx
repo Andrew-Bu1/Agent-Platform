@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Bot,
+  CheckCircle2,
   ChevronDown,
   GitBranch,
   Loader2,
   MessageSquare,
   RefreshCw,
   Send,
+  XCircle,
 } from 'lucide-react';
 import { flowsApi } from '../api/flows';
 import { runsApi } from '../api/runs';
@@ -236,21 +238,76 @@ function WorkflowPicker({
   );
 }
 
-function ChatEventList({ events }: { events: ChatEvent[] }) {
-  const visibleEvents = events.filter((event) => event.type !== 'token').slice(-5);
-  if (visibleEvents.length === 0) return null;
+interface NodeEntry {
+  nodeId: string;
+  status: 'running' | 'completed' | 'failed';
+}
+
+function classifyNodeEvent(type: string): 'completed' | 'failed' | 'running' | null {
+  const t = type.toLowerCase();
+  if (t.includes('fail') || t.includes('error')) return 'failed';
+  if (t.includes('complet') || t.includes('success') || t.includes('done') || t.includes('finish')) return 'completed';
+  if (t.includes('start') || t.includes('run') || t.includes('executing')) return 'running';
+  return null;
+}
+
+function buildNodeEntries(events: ChatEvent[]): NodeEntry[] {
+  const map = new Map<string, NodeEntry>();
+  for (const event of events) {
+    if (!event.nodeId) continue;
+    const status = classifyNodeEvent(event.type);
+    if (!status) continue;
+    const existing = map.get(event.nodeId);
+    // Only upgrade status: running → completed/failed
+    if (!existing || status !== 'running') {
+      map.set(event.nodeId, { nodeId: event.nodeId, status });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function NodeTracePanel({ events }: { events: ChatEvent[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const nodes = buildNodeEntries(events);
+  if (nodes.length === 0) return null;
+
+  const failedCount = nodes.filter((n) => n.status === 'failed').length;
 
   return (
-    <div className="mt-2 space-y-1 border-t border-gray-100 pt-2">
-      {visibleEvents.map((event) => (
-        <div key={event.id} className="flex items-center gap-2 text-[11px] text-gray-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
-          <span className="truncate">
-            {event.type}
-            {event.nodeId ? ` · ${event.nodeId}` : ''}
-          </span>
+    <div className="mt-2 border-t border-gray-100 pt-2">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-1.5 text-[11px] text-gray-400 transition-colors hover:text-gray-600"
+      >
+        <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        <span>
+          {nodes.length} node{nodes.length !== 1 ? 's' : ''} ran
+          {failedCount > 0
+            ? <span className="ml-1 text-red-400">· {failedCount} failed</span>
+            : <span className="ml-1 text-emerald-500">· all passed</span>
+          }
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="mt-2 space-y-0.5 rounded-lg border border-gray-100 bg-gray-50 p-2">
+          {nodes.map((node) => (
+            <div key={node.nodeId} className="flex items-center gap-2 px-1 py-0.5 text-[11px]">
+              {node.status === 'completed' && (
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+              )}
+              {node.status === 'failed' && (
+                <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+              )}
+              {node.status === 'running' && (
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-brand-400" />
+              )}
+              <span className="font-medium text-gray-700">{node.nodeId}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -274,7 +331,7 @@ function ChatMessageBubble({ message }: { message: ChatMessage }) {
             running
           </span>
         )}
-        {!isUser && <ChatEventList events={message.events} />}
+        {!isUser && <NodeTracePanel events={message.events} />}
       </div>
     </div>
   );
