@@ -70,9 +70,9 @@ class ServiceRouter:
             return None
         cost = Decimal(0)
         if config.input_cost and input_tokens:
-            cost += config.input_cost * input_tokens
+            cost += config.input_cost * input_tokens / Decimal(1_000_000)
         if config.output_cost and output_tokens:
-            cost += config.output_cost * output_tokens
+            cost += config.output_cost * output_tokens / Decimal(1_000_000)
         return cost
 
     def _base_log(self, config: ModelConfig, ctx: CallerContext) -> dict:

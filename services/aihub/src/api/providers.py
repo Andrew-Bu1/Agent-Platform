@@ -1,4 +1,5 @@
 from uuid import UUID, uuid4
+from typing import Literal
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
@@ -58,7 +59,7 @@ class ProviderCreate(BaseModel):
     description: str | None = None
     logo_url: str | None = None
     base_url: str | None = None
-    adapter_type: str = "openai_compatible"
+    adapter_type: Literal["openai_compatible", "local"] = "openai_compatible"
     sort_order: int = 0
     api_key: str | None = None  # plaintext — stored encrypted in config_json
 
@@ -68,7 +69,7 @@ class ProviderUpdate(BaseModel):
     description: str | None = None
     logo_url: str | None = None
     base_url: str | None = None
-    adapter_type: str | None = None
+    adapter_type: Literal["openai_compatible", "local"] | None = None
     is_active: bool | None = None
     sort_order: int | None = None
     api_key: str | None = None  # provide to rotate the key; omit to leave unchanged

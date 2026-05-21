@@ -1,15 +1,15 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from common.logger import get_logger
 
-from src.api.dependencies import get_caller_context, get_entitlement_guard, get_feature_guard, get_service_router
+from src.api.dependencies import get_caller_context, get_feature_guard, get_service_router
 from src.middleware.auth import CallerContext
 from src.models.chat import ChatResponse
-from src.services.entitlement import EntitlementGuard, FeatureGuard
+from src.services.entitlement import FeatureGuard
 from src.services.router import ServiceRouter
 
 
@@ -35,10 +35,10 @@ def router() -> APIRouter:
         service_router: ServiceRouter = Depends(get_service_router),
         ctx: CallerContext = Depends(get_caller_context),
         feature_guard: FeatureGuard = Depends(get_feature_guard),
-        entitlement_guard: EntitlementGuard = Depends(get_entitlement_guard),
     ):
+        if "model:invoke" not in ctx.permissions:
+            raise HTTPException(status_code=403, detail="permission denied: model:invoke")
         await feature_guard.require(ctx.tenant_id, ctx.bearer_token, "aihub.chat")
-        await entitlement_guard.check_before_call(ctx.tenant_id, request.model, "chat", ctx.bearer_token)
         logger.info(
             f"Chat request: model={request.model!r} stream={request.stream} "
             f"tools={len(request.tools) if request.tools else 0} "
