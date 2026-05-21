@@ -4,6 +4,7 @@ import {
   Clock, StopCircle, RefreshCw, ChevronDown, ChevronRight,
   MessageSquare,
 } from 'lucide-react';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { runsApi } from '../api/runs';
 import { flowsApi } from '../api/flows';
 import { threadsApi } from '../api/threads';
@@ -186,6 +187,7 @@ function RunRow({ run: initialRun, onRefresh }: { run: Run; onRefresh: () => voi
   const [expanded, setExpanded] = useState(false);
   const [events, setEvents] = useState<ParsedEvent[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const stopRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -218,13 +220,12 @@ function RunRow({ run: initialRun, onRefresh }: { run: Run; onRefresh: () => voi
     setStreaming(false);
   }
 
-  async function handleCancel() {
-    if (!confirm('Cancel this run?')) return;
+  async function doCancel() {
     try {
       await runsApi.cancel(run.id);
       onRefresh();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to cancel run.');
+    } catch {
+      // ignore
     }
   }
 
@@ -251,7 +252,7 @@ function RunRow({ run: initialRun, onRefresh }: { run: Run; onRefresh: () => voi
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
             {isActive && (
               <button
-                onClick={handleCancel}
+                onClick={() => setShowCancelConfirm(true)}
                 className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                 title="Cancel"
               >
@@ -303,6 +304,16 @@ function RunRow({ run: initialRun, onRefresh }: { run: Run; onRefresh: () => voi
             </div>
           </td>
         </tr>
+      )}
+      {showCancelConfirm && (
+        <ConfirmDialog
+          title="Cancel Run"
+          message="Cancel this run?"
+          confirmLabel="Cancel run"
+          variant="warning"
+          onConfirm={() => { setShowCancelConfirm(false); doCancel(); }}
+          onCancel={() => setShowCancelConfirm(false)}
+        />
       )}
     </>
   );

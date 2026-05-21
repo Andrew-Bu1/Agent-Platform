@@ -13,6 +13,7 @@ import {
 import { iamApi } from '../api/iam';
 import { modelsApi } from '../api/aihub';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useAuthStore } from '../store/authStore';
 import type {
   Feature,
   FeatureEntitlement,
@@ -57,10 +58,12 @@ function Section({
 
 function FeatureCatalog({
   features,
+  canEdit,
   onRefresh,
   onToast,
 }: {
   features: Feature[];
+  canEdit: boolean;
   onRefresh: () => void;
   onToast: (type: 'success' | 'error', message: string) => void;
 }) {
@@ -92,35 +95,37 @@ function FeatureCatalog({
 
   return (
     <Section title="Feature catalog" description="Platform capabilities that can be entitled to tenants.">
-      <form onSubmit={createFeature} className="mb-4 grid gap-3 md:grid-cols-[1fr_1fr_1.5fr_auto]">
-        <input
-          value={key}
-          onChange={(e) => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
-          placeholder="feature_key"
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono outline-none focus:border-brand-400"
-          required
-        />
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Display name"
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-400"
-          required
-        />
-        <input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Description"
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-400"
-        />
-        <button
-          disabled={saving || !key || !name}
-          className="flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Add
-        </button>
-      </form>
+      {canEdit && (
+        <form onSubmit={createFeature} className="mb-4 grid gap-3 md:grid-cols-[1fr_1fr_1.5fr_auto]">
+          <input
+            value={key}
+            onChange={(e) => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
+            placeholder="feature_key"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono outline-none focus:border-brand-400"
+            required
+          />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Display name"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-400"
+            required
+          />
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Description"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-400"
+          />
+          <button
+            disabled={saving || !key || !name}
+            className="flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Add
+          </button>
+        </form>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {features.map((feature) => (
@@ -183,12 +188,14 @@ function FeatureEntitlements({
   tenantId,
   features,
   entitlements,
+  canEdit,
   onRefresh,
   onToast,
 }: {
   tenantId: string | null;
   features: Feature[];
   entitlements: FeatureEntitlement[];
+  canEdit: boolean;
   onRefresh: () => void;
   onToast: (type: 'success' | 'error', message: string) => void;
 }) {
@@ -241,18 +248,26 @@ function FeatureEntitlements({
                 <p className="truncate text-sm font-medium text-gray-900">{feature.name}</p>
                 <p className="truncate font-mono text-xs text-gray-400">{feature.key}</p>
               </div>
-              <button
-                onClick={() => toggle(feature, entitlement)}
-                disabled={!tenantId}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                  entitlement?.enabled
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                } disabled:opacity-50`}
-              >
-                {entitlement?.enabled ? 'Enabled' : entitlement ? 'Disabled' : 'Grant'}
-              </button>
-              {entitlement && (
+              {canEdit ? (
+                <button
+                  onClick={() => toggle(feature, entitlement)}
+                  disabled={!tenantId}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                    entitlement?.enabled
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  } disabled:opacity-50`}
+                >
+                  {entitlement?.enabled ? 'Enabled' : entitlement ? 'Disabled' : 'Grant'}
+                </button>
+              ) : (
+                <span className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  entitlement?.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {entitlement?.enabled ? 'Enabled' : entitlement ? 'Disabled' : '—'}
+                </span>
+              )}
+              {canEdit && entitlement && (
                 <button onClick={() => setConfirmRevoke(feature)} className="p-1.5 text-gray-400 hover:text-red-600">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -280,12 +295,14 @@ function ModelEntitlements({
   tenantId,
   models,
   entitlements,
+  canEdit,
   onRefresh,
   onToast,
 }: {
   tenantId: string | null;
   models: ModelConfig[];
   entitlements: ModelEntitlement[];
+  canEdit: boolean;
   onRefresh: () => void;
   onToast: (type: 'success' | 'error', message: string) => void;
 }) {
@@ -365,7 +382,7 @@ function ModelEntitlements({
 
   return (
     <Section title="Model entitlements" description="Grant AI model access and rate limits for the selected tenant.">
-      <form onSubmit={grant} className="mb-4 grid gap-3 md:grid-cols-[2fr_auto_1fr_1fr_auto]">
+      {canEdit && <form onSubmit={grant} className="mb-4 grid gap-3 md:grid-cols-[2fr_auto_1fr_1fr_auto]">
         <select
           value={selectedModelId}
           onChange={(e) => setSelectedModelId(e.target.value)}
@@ -400,7 +417,7 @@ function ModelEntitlements({
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Grant
         </button>
-      </form>
+      </form>}
 
       <div className="overflow-hidden rounded-lg border border-gray-200">
         <table className="w-full text-sm">
@@ -421,39 +438,45 @@ function ModelEntitlements({
                   RPM {entitlement.rpmLimit ?? '∞'} · TPM {entitlement.tpmLimit ?? '∞'}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  {pendingDeleteId === entitlement.id ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="text-xs text-red-600 font-medium">Remove?</span>
-                      <button
-                        onClick={() => confirmRevoke(entitlement)}
-                        disabled={revoking}
-                        className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                      >
-                        {revoking ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Yes'}
-                      </button>
-                      <button
-                        onClick={() => setPendingDeleteId(null)}
-                        disabled={revoking}
-                        className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                    </span>
+                  {canEdit ? (
+                    pendingDeleteId === entitlement.id ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-xs text-red-600 font-medium">Remove?</span>
+                        <button
+                          onClick={() => confirmRevoke(entitlement)}
+                          disabled={revoking}
+                          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {revoking ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Yes'}
+                        </button>
+                        <button
+                          onClick={() => setPendingDeleteId(null)}
+                          disabled={revoking}
+                          className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => toggle(entitlement)}
+                          className={`mr-2 rounded-lg px-3 py-1.5 text-xs font-medium ${entitlement.allowed ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
+                        >
+                          {entitlement.allowed ? 'Allowed' : 'Blocked'}
+                        </button>
+                        <button
+                          onClick={() => setPendingDeleteId(entitlement.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )
                   ) : (
-                    <>
-                      <button
-                        onClick={() => toggle(entitlement)}
-                        className={`mr-2 rounded-lg px-3 py-1.5 text-xs font-medium ${entitlement.allowed ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
-                      >
-                        {entitlement.allowed ? 'Allowed' : 'Blocked'}
-                      </button>
-                      <button
-                        onClick={() => setPendingDeleteId(entitlement.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-600"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </>
+                    <span className={`rounded-lg px-3 py-1.5 text-xs font-medium ${entitlement.allowed ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {entitlement.allowed ? 'Allowed' : 'Blocked'}
+                    </span>
                   )}
                 </td>
               </tr>
@@ -471,15 +494,17 @@ function ModelEntitlements({
 }
 
 export default function PlatformPage() {
+  const { tenantId: ownTenantId, userId } = useAuthStore();
   const [tenants, setTenants] = useState<TenantDto[]>([]);
   const [features, setFeatures] = useState<Feature[]>([]);
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceDto[]>([]);
   const [featureEntitlements, setFeatureEntitlements] = useState<FeatureEntitlement[]>([]);
   const [modelEntitlements, setModelEntitlements] = useState<ModelEntitlement[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState('');
+  const [selectedTenantId, setSelectedTenantId] = useState(ownTenantId || '');
   const [loading, setLoading] = useState(true);
   const [tenantLoading, setTenantLoading] = useState(false);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState<boolean | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   function showToast(type: 'success' | 'error', message: string) {
@@ -490,22 +515,29 @@ export default function PlatformPage() {
   async function loadBase() {
     setLoading(true);
     try {
-      const [tenantsResult, featuresResult, modelsResult] = await Promise.allSettled([
+      const [tenantsResult, featuresResult, modelsResult, membersResult] = await Promise.allSettled([
         iamApi.listPlatformTenants(),
         iamApi.listFeatures(),
         modelsApi.list(),
+        ownTenantId ? iamApi.listTenantMembers(ownTenantId) : Promise.resolve([]),
       ]);
+
+      if (membersResult.status === 'fulfilled') {
+        const me = membersResult.value.find((m) => m.userId === userId);
+        setIsPlatformAdmin(me?.roles.includes('platform_admin') ?? false);
+      } else {
+        setIsPlatformAdmin(false);
+      }
 
       const tenantList = tenantsResult.status === 'fulfilled' ? tenantsResult.value : [];
       setTenants(tenantList);
-      setSelectedTenantId((current) => current || tenantList[0]?.id || '');
+      // For platform admins select first tenant; for others keep their own tenant (pre-set in useState).
+      if (tenantList.length > 0) {
+        setSelectedTenantId((current) => current || tenantList[0]?.id || '');
+      }
 
       if (featuresResult.status === 'fulfilled') setFeatures(featuresResult.value);
       if (modelsResult.status === 'fulfilled') setModels(modelsResult.value);
-
-      if (tenantsResult.status === 'rejected') {
-        showToast('error', tenantsResult.reason instanceof Error ? tenantsResult.reason.message : 'Failed to load tenants.');
-      }
     } finally {
       setLoading(false);
     }
@@ -515,16 +547,16 @@ export default function PlatformPage() {
     if (!tenantId) return;
     setTenantLoading(true);
     try {
-      const [workspaceList, featureRows, modelRows] = await Promise.all([
+      const [workspaceResult, featureResult, modelResult] = await Promise.allSettled([
         iamApi.listPlatformTenantWorkspaces(tenantId),
         iamApi.listPlatformFeatureEntitlements(tenantId),
         iamApi.listPlatformModelEntitlements(tenantId),
       ]);
-      setWorkspaces(workspaceList);
-      setFeatureEntitlements(featureRows);
-      setModelEntitlements(modelRows);
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to load tenant entitlements.');
+      if (workspaceResult.status === 'fulfilled') setWorkspaces(workspaceResult.value);
+      if (featureResult.status === 'fulfilled') setFeatureEntitlements(featureResult.value);
+      else showToast('error', featureResult.reason instanceof Error ? featureResult.reason.message : 'Failed to load feature entitlements.');
+      if (modelResult.status === 'fulfilled') setModelEntitlements(modelResult.value);
+      else showToast('error', modelResult.reason instanceof Error ? modelResult.reason.message : 'Failed to load model entitlements.');
     } finally {
       setTenantLoading(false);
     }
@@ -533,15 +565,16 @@ export default function PlatformPage() {
   useEffect(() => { loadBase(); }, []);
   useEffect(() => { loadTenant(selectedTenantId); }, [selectedTenantId]);
 
-  const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId) ?? null;
-
-  if (loading) {
+  if (loading || isPlatformAdmin === null) {
     return (
       <div className="flex h-64 items-center justify-center text-gray-400">
         <Loader2 className="h-6 w-6 animate-spin" />
       </div>
     );
   }
+
+  const canEdit = isPlatformAdmin === true;
+  const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId) ?? null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -552,23 +585,29 @@ export default function PlatformPage() {
           </div>
           <div>
             <h2 className="text-xl font-bold text-gray-900">Platform Admin</h2>
-            <p className="text-sm text-gray-500">Manage tenants, feature access, and model entitlements.</p>
+            <p className="text-sm text-gray-500">
+              {canEdit
+                ? 'Manage tenants, feature access, and model entitlements.'
+                : "View your tenant’s feature and model entitlements (read-only)."}
+            </p>
           </div>
         </div>
-        <select
-          value={selectedTenantId}
-          onChange={(e) => setSelectedTenantId(e.target.value)}
-          className="min-w-64 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-400"
-        >
-          {tenants.map((tenant) => (
-            <option key={tenant.id} value={tenant.id}>{tenant.name} ({tenant.code})</option>
-          ))}
-        </select>
+        {canEdit && (
+          <select
+            value={selectedTenantId}
+            onChange={(e) => setSelectedTenantId(e.target.value)}
+            className="min-w-64 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-400"
+          >
+            {tenants.map((tenant) => (
+              <option key={tenant.id} value={tenant.id}>{tenant.name} ({tenant.code})</option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="space-y-5">
         <TenantPanel tenant={selectedTenant} workspaces={workspaces} />
-        <FeatureCatalog features={features} onRefresh={loadBase} onToast={showToast} />
+        <FeatureCatalog features={features} canEdit={canEdit} onRefresh={loadBase} onToast={showToast} />
         {tenantLoading ? (
           <div className="flex h-40 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-400">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -579,6 +618,7 @@ export default function PlatformPage() {
               tenantId={selectedTenantId}
               features={features}
               entitlements={featureEntitlements}
+              canEdit={canEdit}
               onRefresh={() => loadTenant()}
               onToast={showToast}
             />
@@ -586,6 +626,7 @@ export default function PlatformPage() {
               tenantId={selectedTenantId}
               models={models}
               entitlements={modelEntitlements}
+              canEdit={canEdit}
               onRefresh={() => loadTenant()}
               onToast={showToast}
             />

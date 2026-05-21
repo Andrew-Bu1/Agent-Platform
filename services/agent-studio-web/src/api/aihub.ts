@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, tryRefresh } from './client';
 import { useAuthStore } from '../store/authStore';
 import type {
   Provider,
@@ -93,20 +93,42 @@ export const chatApi = {
 
   /** Opens an SSE stream for a chat request. Returns an EventSource-like reader. */
   stream: (model: string, messages: AihubChatMessage[], onChunk: (text: string) => void, onDone: (usage?: { prompt_tokens?: number | null; completion_tokens?: number | null }) => void, onError: (err: string) => void, params?: ChatParams): (() => void) => {
-    const { accessToken } = useAuthStore.getState();
     const ctrl = new AbortController();
+    const payload = JSON.stringify({ model, messages, stream: true, ...params });
 
-    fetch('/api/v1/aihub/chat/stream', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: JSON.stringify({ model, messages, stream: true, ...params }),
-      signal: ctrl.signal,
-    }).then(async (res) => {
+    const readError = async (res: Response): Promise<string> => {
+      const text = await res.text();
+      if (!text) return `HTTP ${res.status}`;
+      try {
+        const body = JSON.parse(text);
+        return body.message ?? body.error ?? body.detail ?? text;
+      } catch {
+        return text;
+      }
+    };
+
+    const start = async (isRetry = false): Promise<void> => {
+      const { accessToken, clearAuth } = useAuthStore.getState();
+      const res = await fetch('/api/v1/aihub/chat/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: payload,
+        signal: ctrl.signal,
+      });
+
+      if (res.status === 401 && !isRetry) {
+        const ok = await tryRefresh();
+        if (ok) return start(true);
+        clearAuth();
+        onError('Session expired');
+        return;
+      }
+
       if (!res.ok) {
-        onError(`HTTP ${res.status}`);
+        onError(await readError(res));
         return;
       }
       const reader = res.body?.getReader();
@@ -114,6 +136,8 @@ export const chatApi = {
       const dec = new TextDecoder();
       let lastUsage: { prompt_tokens?: number | null; completion_tokens?: number | null } | undefined;
       let buf = '';
+      let failed = false;
+      let finished = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -122,18 +146,32 @@ export const chatApi = {
         buf = lines.pop() ?? '';
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
+          if (!trimmed) continue;
           const raw = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
+          if (raw === '[DONE]') {
+            finished = true;
+            await reader.cancel().catch(() => {});
+            break;
+          }
           try {
             const chunk = JSON.parse(raw);
+            if (chunk?.error || chunk?.detail || chunk?.message) {
+              onError(chunk.message ?? chunk.error ?? chunk.detail);
+              failed = true;
+              ctrl.abort();
+              break;
+            }
             const content = chunk?.choices?.[0]?.delta?.content;
             if (typeof content === 'string') onChunk(content);
             if (chunk?.usage) lastUsage = chunk.usage;
           } catch { /* ignore malformed */ }
         }
+        if (failed || finished) break;
       }
-      onDone(lastUsage);
-    }).catch((err) => {
+      if (!failed) onDone(lastUsage);
+    };
+
+    start().catch((err) => {
       if (err?.name !== 'AbortError') onError(String(err));
     });
 

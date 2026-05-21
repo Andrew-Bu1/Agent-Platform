@@ -1,46 +1,17 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import {
   Bot, Plus, Pencil, Trash2, Loader2, X, AlertCircle, Key,
-  Brain, Zap, Search, Check,
+  Search, Check,
 } from 'lucide-react';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { agentsApi } from '../api/agents';
 import { modelsApi } from '../api/aihub';
 import { toolsApi } from '../api/tools';
 import type { Agent, CreateAgentRequest, ModelConfig, Tool } from '../types/api';
 import type { MemoryStrategy } from '../types/canvas';
 
-const KIND_PERMISSIONS: Record<string, string[]> = {
-  react: ['model:invoke'],
-  team:  ['model:invoke', 'agent:run'],
-};
-
-const AGENT_KINDS = ['react', 'team'] as const;
-type AgentKind = typeof AGENT_KINDS[number];
-
-const KIND_LABELS: Record<AgentKind, string> = {
-  react: 'React Agent',
-  team:  'Team',
-};
-
-const KIND_DESCRIPTIONS: Record<AgentKind, string> = {
-  react: 'Single agent — ReAct loop with tools',
-  team:  'Supervisor + member agents (handoff)',
-};
-
-const KIND_ICONS: Record<AgentKind, React.ReactNode> = {
-  react: <Zap className="w-4 h-4" />,
-  team:  <Brain className="w-4 h-4" />,
-};
-
-const KIND_COLORS: Record<string, string> = {
-  react: 'bg-purple-100 text-purple-700',
-  team:  'bg-blue-100 text-blue-700',
-};
-
-const KIND_USES_TOOLS: Record<AgentKind, boolean> = {
-  react: true,
-  team:  false,
-};
+const AGENT_KIND = 'react' as const;
+type AgentKind = typeof AGENT_KIND;
 
 // ─── Tool multi-select ────────────────────────────────────────────────────────
 
@@ -140,7 +111,7 @@ function ModelSelector({
     <div className="space-y-2">
       {selected && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-50 border border-brand-200 text-sm">
-          <Brain className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+          <Bot className="w-3.5 h-3.5 text-brand-600 shrink-0" />
           <span className="font-medium text-brand-800 flex-1 truncate">{selected.display_name}</span>
           <span className="text-xs text-brand-500 font-mono">{selected.provider_key}</span>
           <button type="button" onClick={() => onChange('')} className="text-brand-400 hover:text-brand-700 ml-1">
@@ -214,7 +185,7 @@ function AgentModal({
   // Basic fields
   const [name, setName] = useState(agent?.name ?? '');
   const [description, setDescription] = useState(agent?.description ?? '');
-  const [agentKind, setAgentKind] = useState<AgentKind>((agent?.agentKind as AgentKind) ?? 'react');
+  const agentKind: AgentKind = AGENT_KIND;
   const [modelKey, setModelKey] = useState(agent?.modelId ?? '');
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>(agent?.toolIds ?? []);
 
@@ -305,7 +276,7 @@ function AgentModal({
     }
   }
 
-  const permissions = KIND_PERMISSIONS[agentKind] ?? [];
+  const permissions = ['model:invoke'];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -347,29 +318,6 @@ function AgentModal({
             </div>
           </div>
 
-          {/* Agent kind */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Agent kind *</label>
-            <div className="grid grid-cols-5 gap-2">
-              {AGENT_KINDS.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setAgentKind(k)}
-                  className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl border text-center transition-all ${
-                    agentKind === k
-                      ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300 hover:text-brand-700'
-                  }`}
-                >
-                  {KIND_ICONS[k]}
-                  <span className="text-xs font-medium leading-tight">{KIND_LABELS[k]}</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-400 mt-1.5">{KIND_DESCRIPTIONS[agentKind]}</p>
-          </div>
-
           <div className="border-t border-gray-100" />
 
           {/* Model selector */}
@@ -387,9 +335,8 @@ function AgentModal({
             )}
           </div>
 
-          {/* Tools — only for kinds that support them */}
-          {KIND_USES_TOOLS[agentKind] && (
-            <div>
+          {/* Tools */}
+          <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Tools</label>
               {loadingData ? (
                 <div className="flex items-center gap-2 text-sm text-gray-400 py-3">
@@ -399,13 +346,11 @@ function AgentModal({
                 <ToolSelector tools={tools} selected={selectedToolIds} onChange={setSelectedToolIds} />
               )}
             </div>
-          )}
 
           <div className="border-t border-gray-100" />
 
-          {/* Definition — kind-aware */}
-          {agentKind === 'react' && (
-            <div className="space-y-3">
+          {/* Definition */}
+          <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">System prompt</label>
                 <textarea
@@ -500,14 +445,6 @@ function AgentModal({
                 </div>
               </div>
             </div>
-          )}
-
-          {agentKind === 'team' && (
-            <div className="flex items-start gap-2 px-3.5 py-3 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-700">
-              <Brain className="w-4 h-4 mt-0.5 shrink-0" />
-              <p>Team agents act as a supervisor that delegates to member agents at runtime. Configure the member agents on the flow canvas when you build your flow.</p>
-            </div>
-          )}
 
           {/* Permissions badge */}
           <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-gray-50 border border-gray-200">
@@ -566,6 +503,7 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(true);
   const [modalAgent, setModalAgent] = useState<Agent | null | 'new'>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   async function load(p = page) {
     setLoading(true);
@@ -582,14 +520,17 @@ export default function AgentsPage() {
 
   useEffect(() => { load(); }, [page]);
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this agent? This cannot be undone.')) return;
+  function handleDelete(id: string) {
+    setConfirmDeleteId(id);
+  }
+
+  async function doDelete(id: string) {
     setDeleting(id);
     try {
       await agentsApi.delete(id);
       load();
     } catch {
-      alert('Failed to delete agent.');
+      // ignore
     } finally {
       setDeleting(null);
     }
@@ -628,10 +569,8 @@ export default function AgentsPage() {
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Kind</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Model</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Tools</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Permissions</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Updated</th>
                 <th className="px-5 py-3" />
               </tr>
@@ -652,23 +591,8 @@ export default function AgentsPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${KIND_COLORS[agent.agentKind] ?? 'bg-gray-100 text-gray-700'}`}>
-                      {agent.agentKind}
-                    </span>
-                  </td>
                   <td className="px-5 py-3.5 text-gray-500 font-mono text-xs">{agent.modelId ?? '—'}</td>
                   <td className="px-5 py-3.5 text-gray-500 text-xs">{agent.toolIds.length} tool{agent.toolIds.length !== 1 ? 's' : ''}</td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex flex-wrap gap-1">
-                      {(KIND_PERMISSIONS[agent.agentKind] ?? []).slice(0, 2).map((k) => (
-                        <span key={k} className="px-1.5 py-0.5 bg-brand-50 text-brand-700 text-[10px] font-mono rounded border border-brand-200">{k}</span>
-                      ))}
-                      {(KIND_PERMISSIONS[agent.agentKind] ?? []).length === 0 && (
-                        <span className="text-gray-300 text-xs">—</span>
-                      )}
-                    </div>
-                  </td>
                   <td className="px-5 py-3.5 text-gray-400 text-xs">{new Date(agent.updatedAt).toLocaleDateString()}</td>
                   <td className="px-5 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -728,6 +652,14 @@ export default function AgentsPage() {
           agent={modalAgent === 'new' ? null : modalAgent}
           onClose={() => setModalAgent(null)}
           onSaved={() => load()}
+        />
+      )}
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="Delete Agent"
+          message="Delete this agent? This cannot be undone."
+          onConfirm={() => { const id = confirmDeleteId; setConfirmDeleteId(null); doDelete(id); }}
+          onCancel={() => setConfirmDeleteId(null)}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import { Plus, Pencil, Trash2, Loader2, X, AlertCircle, ChevronDown } from 'lucide-react';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { providersApi, modelsApi } from '../api/aihub';
 import type {
   Provider,
@@ -84,7 +85,7 @@ function ProviderModal({
     description:   provider?.description   ?? '',
     logo_url:      provider?.logo_url      ?? '',
     base_url:      provider?.base_url      ?? '',
-    adapter_type:  provider?.adapter_type  ?? 'openai',
+    adapter_type:  provider?.adapter_type  ?? 'openai_compatible',
     sort_order:    String(provider?.sort_order ?? 0),
     api_key:       '',
     is_active:     provider?.is_active ?? true,
@@ -165,7 +166,7 @@ function ProviderModal({
 
         <Field label="Adapter type *">
           <select value={form.adapter_type} onChange={set('adapter_type')} className={SELECT}>
-            {['openai', 'anthropic', 'google', 'cohere', 'ollama', 'custom'].map((a) => (
+            {['openai_compatible', 'local'].map((a) => (
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
@@ -511,6 +512,7 @@ export default function ModelsPage() {
   const [providerModal, setProviderModal] = useState<Provider | null | 'new'>(null);
   const [modelModal, setModelModal]       = useState<ModelConfig | null | 'new'>(null);
   const [deleting, setDeleting]           = useState<string | null>(null);
+  const [confirmState, setConfirmState]   = useState<{ type: 'provider' | 'model'; id: string } | null>(null);
 
   async function loadProviders() {
     setLoadingProviders(true);
@@ -530,14 +532,20 @@ export default function ModelsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadModels(); }, [opFilter]);
 
-  async function deleteProvider(id: string) {
-    if (!confirm('Delete this provider? All associated models will need to be removed first.')) return;
+  function deleteProvider(id: string) {
+    setConfirmState({ type: 'provider', id });
+  }
+
+  function deleteModel(id: string) {
+    setConfirmState({ type: 'model', id });
+  }
+
+  async function doDeleteProvider(id: string) {
     setDeleting(id);
     try { await providersApi.delete(id); await loadProviders(); } catch { /* ignore */ } finally { setDeleting(null); }
   }
 
-  async function deleteModel(id: string) {
-    if (!confirm('Delete this model?')) return;
+  async function doDeleteModel(id: string) {
     setDeleting(id);
     try { await modelsApi.delete(id); await loadModels(); } catch { /* ignore */ } finally { setDeleting(null); }
   }
@@ -750,6 +758,20 @@ export default function ModelsPage() {
           providers={providers}
           onClose={() => setModelModal(null)}
           onSaved={loadModels}
+        />
+      )}
+      {confirmState && (
+        <ConfirmDialog
+          title={confirmState.type === 'provider' ? 'Delete Provider' : 'Delete Model'}
+          message={confirmState.type === 'provider'
+            ? 'Delete this provider? All associated models will need to be removed first.'
+            : 'Delete this model?'}
+          onConfirm={() => {
+            const { type, id } = confirmState;
+            setConfirmState(null);
+            type === 'provider' ? doDeleteProvider(id) : doDeleteModel(id);
+          }}
+          onCancel={() => setConfirmState(null)}
         />
       )}
     </div>

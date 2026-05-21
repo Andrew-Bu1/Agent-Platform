@@ -1,48 +1,49 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import {
   Wrench, Plus, Pencil, Trash2, Loader2, X, AlertCircle,
-  Globe, Code2, Database, Zap, ChevronDown, ChevronRight,
+  Globe, Code2, ShieldAlert, ChevronDown, ChevronRight,
 } from 'lucide-react';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { toolsApi } from '../api/tools';
 import type { Tool, CreateToolRequest } from '../types/api';
 
-const TOOL_TYPES = ['function', 'http_api', 'code', 'database', 'custom'] as const;
+const TOOL_TYPES = ['http', 'code'] as const;
 type ToolType = typeof TOOL_TYPES[number];
 
 const TYPE_COLORS: Record<string, string> = {
-  http_api:  'bg-sky-100 text-sky-700',
-  function:  'bg-amber-100 text-amber-700',
-  code:      'bg-violet-100 text-violet-700',
-  database:  'bg-emerald-100 text-emerald-700',
-  custom:    'bg-gray-100 text-gray-700',
+  http: 'bg-sky-100 text-sky-700',
+  code: 'bg-violet-100 text-violet-700',
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  function: 'Function',
-  http_api: 'HTTP API',
+  http: 'HTTP',
   code: 'Code',
-  database: 'Database',
-  custom: 'Custom',
 };
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
-  function: <Zap className="w-4 h-4" />,
-  http_api: <Globe className="w-4 h-4" />,
+  http: <Globe className="w-4 h-4" />,
   code: <Code2 className="w-4 h-4" />,
-  database: <Database className="w-4 h-4" />,
-  custom: <Wrench className="w-4 h-4" />,
 };
 
-// ─── Parameter types ──────────────────────────────────────────────────────────
+// Modules whose presence in code signals dangerous capability.
+const DANGEROUS_IMPORTS = [
+  'os', 'sys', 'subprocess', 'socket', 'requests', 'urllib',
+  'http', 'ftplib', 'smtplib', 'paramiko', 'shutil', 'pathlib',
+  'glob', 'tempfile', 'ctypes', 'cffi', 'importlib', 'pickle',
+  'multiprocessing', 'threading',
+];
 
-interface FnParam {
-  id: string;
-  name: string;
-  type: string;
-  description: string;
-  required: boolean;
-  enumValues: string; // comma-separated for string type
+function detectDangerousImports(code: string): string[] {
+  const found: string[] = [];
+  for (const mod of DANGEROUS_IMPORTS) {
+    // matches: import os / import os.path / from os import ...
+    const pattern = new RegExp(`(?:^|\\n)\\s*(?:import\\s+${mod}(?:\\s|\\.|,|$)|from\\s+${mod}(?:\\s|\\.))`, '');
+    if (pattern.test(code)) found.push(mod);
+  }
+  return found;
 }
+
+// ─── Parameter types ──────────────────────────────────────────────────────────
 
 interface HttpHeader {
   id: string;
@@ -50,56 +51,14 @@ interface HttpHeader {
   value: string;
 }
 
-const PARAM_TYPES = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 const AUTH_TYPES = ['none', 'bearer', 'api_key', 'basic'];
-const CODE_RUNTIMES = ['python', 'javascript', 'typescript'];
+const CODE_RUNTIMES = ['python'];
 
 function uid() { return Math.random().toString(36).slice(2); }
 
-function newParam(): FnParam {
-  return { id: uid(), name: '', type: 'string', description: '', required: false, enumValues: '' };
-}
 function newHeader(): HttpHeader {
   return { id: uid(), key: '', value: '' };
-}
-
-// ─── Schema helpers ───────────────────────────────────────────────────────────
-
-function paramsToSchema(params: FnParam[]): Record<string, unknown> {
-  const properties: Record<string, unknown> = {};
-  const required: string[] = [];
-  for (const p of params) {
-    const key = p.name.trim();
-    if (!key) continue;
-    const def: Record<string, unknown> = { type: p.type };
-    if (p.description.trim()) def.description = p.description.trim();
-    if (p.type === 'string' && p.enumValues.trim()) {
-      def.enum = p.enumValues.split(',').map((s) => s.trim()).filter(Boolean);
-    }
-    properties[key] = def;
-    if (p.required) required.push(key);
-  }
-  return { type: 'object', properties, ...(required.length ? { required } : {}) };
-}
-
-function schemaToParams(schema: Record<string, unknown> | null | undefined): FnParam[] {
-  if (!schema || typeof schema !== 'object') return [];
-  const props = schema.properties as Record<string, Record<string, unknown>> | undefined;
-  if (!props) return [];
-  const req = (schema.required as string[]) ?? [];
-  return Object.entries(props).map(([name, def]) => ({
-    id: uid(),
-    name,
-    type: (def.type as string) ?? 'string',
-    description: (def.description as string) ?? '',
-    required: req.includes(name),
-    enumValues: Array.isArray(def.enum) ? (def.enum as string[]).join(', ') : '',
-  }));
-}
-
-function buildFunctionConfig(params: FnParam[]): Record<string, unknown> {
-  return { parameters: paramsToSchema(params) };
 }
 
 function buildHttpConfig(opts: {
@@ -128,10 +87,6 @@ function buildCodeConfig(opts: { runtime: string; code: string }): Record<string
   return { runtime: opts.runtime, code: opts.code };
 }
 
-function buildDatabaseConfig(opts: { connectionString: string; query: string }): Record<string, unknown> {
-  return { connectionString: opts.connectionString, query: opts.query };
-}
-
 // ─── JSON Preview panel ───────────────────────────────────────────────────────
 
 function JsonPreview({ data }: { data: Record<string, unknown> }) {
@@ -150,93 +105,6 @@ function JsonPreview({ data }: { data: Record<string, unknown> }) {
         <pre className="px-4 py-3 text-xs font-mono bg-gray-950 text-green-400 overflow-auto max-h-48">
           {JSON.stringify(data, null, 2)}
         </pre>
-      )}
-    </div>
-  );
-}
-
-// ─── Function config builder ──────────────────────────────────────────────────
-
-function FunctionConfigForm({
-  params, setParams,
-}: { params: FnParam[]; setParams: (p: FnParam[]) => void }) {
-  const update = (id: string, field: keyof FnParam, value: string | boolean) =>
-    setParams(params.map((p) => p.id === id ? { ...p, [field]: value } : p));
-  const remove = (id: string) => setParams(params.filter((p) => p.id !== id));
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Parameters</label>
-          <p className="text-xs text-gray-400 mt-0.5">OpenAI function calling format — define each input parameter</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setParams([...params, newParam()])}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg font-medium transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" /> Add parameter
-        </button>
-      </div>
-
-      {params.length === 0 ? (
-        <div className="text-center py-6 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm">
-          No parameters yet — click "Add parameter" to define inputs
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {params.map((p, i) => (
-            <div key={p.id} className="rounded-xl border border-gray-200 p-3 space-y-2 bg-gray-50/50">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-400 w-5 shrink-0">#{i + 1}</span>
-                <input
-                  value={p.name}
-                  onChange={(e) => update(p.id, 'name', e.target.value)}
-                  placeholder="parameter_name"
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm font-mono outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 bg-white"
-                />
-                <select
-                  value={p.type}
-                  onChange={(e) => update(p.id, 'type', e.target.value)}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 bg-white"
-                >
-                  {PARAM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <label className="flex items-center gap-1.5 text-xs text-gray-600 shrink-0 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={p.required}
-                    onChange={(e) => update(p.id, 'required', e.target.checked)}
-                    className="w-3.5 h-3.5 accent-brand-600"
-                  />
-                  required
-                </label>
-                <button
-                  type="button"
-                  onClick={() => remove(p.id)}
-                  className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <input
-                value={p.description}
-                onChange={(e) => update(p.id, 'description', e.target.value)}
-                placeholder="Describe what this parameter does…"
-                className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 bg-white"
-              />
-              {p.type === 'string' && (
-                <input
-                  value={p.enumValues}
-                  onChange={(e) => update(p.id, 'enumValues', e.target.value)}
-                  placeholder="Allowed values (comma-separated): e.g. celsius, fahrenheit"
-                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-mono outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 bg-white text-gray-500"
-                />
-              )}
-            </div>
-          ))}
-        </div>
       )}
     </div>
   );
@@ -355,12 +223,7 @@ function ToolModal({
   // Common fields
   const [name, setName] = useState(tool?.name ?? '');
   const [description, setDescription] = useState(tool?.description ?? '');
-  const [toolType, setToolType] = useState<ToolType>((tool?.toolType as ToolType) ?? 'function');
-
-  // Function type state
-  const [fnParams, setFnParams] = useState<FnParam[]>(() =>
-    schemaToParams((existingCfg as Record<string, unknown>)?.parameters as Record<string, unknown>)
-  );
+  const [toolType, setToolType] = useState<ToolType>((tool?.toolType as ToolType) ?? 'http');
 
   // HTTP type state
   const [httpState, setHttpState] = useState(() => {
@@ -388,38 +251,25 @@ function ToolModal({
     (existingCfg as Record<string, unknown>)?.code as string ?? ''
   );
 
-  // Database type state
-  const [dbConn, setDbConn] = useState(
-    (existingCfg as Record<string, unknown>)?.connectionString as string ?? ''
-  );
-  const [dbQuery, setDbQuery] = useState(
-    (existingCfg as Record<string, unknown>)?.query as string ?? ''
-  );
-
-  // Custom (raw JSON) state
-  const [customRaw, setCustomRaw] = useState(
-    tool?.toolType === 'custom' && tool?.config
-      ? JSON.stringify(tool.config, null, 2)
-      : ''
-  );
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const buildConfig = useCallback((): Record<string, unknown> | null => {
-    if (toolType === 'function') return buildFunctionConfig(fnParams);
-    if (toolType === 'http_api') return buildHttpConfig(httpState);
+    if (toolType === 'http') return buildHttpConfig(httpState);
     if (toolType === 'code') return buildCodeConfig({ runtime: codeRuntime, code: codeSource });
-    if (toolType === 'database') return buildDatabaseConfig({ connectionString: dbConn, query: dbQuery });
-    // custom
-    if (!customRaw.trim()) return {};
-    try { return JSON.parse(customRaw); }
-    catch { return null; }
-  }, [toolType, fnParams, httpState, codeRuntime, codeSource, dbConn, dbQuery, customRaw]);
+    return {};
+  }, [toolType, httpState, codeRuntime, codeSource]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (toolType === 'code') {
+      const bad = detectDangerousImports(codeSource);
+      if (bad.length > 0) {
+        setError(`Dangerous module(s) detected: ${bad.join(', ')}. Remove these imports before saving.`);
+        return;
+      }
+    }
     const config = buildConfig();
     if (config === null) {
       setError('Config must be valid JSON.');
@@ -513,16 +363,22 @@ function ToolModal({
           <div className="border-t border-gray-100" />
 
           {/* Per-type config */}
-          {toolType === 'function' && (
-            <FunctionConfigForm params={fnParams} setParams={setFnParams} />
-          )}
-
-          {toolType === 'http_api' && (
+          {toolType === 'http' && (
             <HttpConfigForm state={httpState} setState={setHttpState} />
           )}
 
           {toolType === 'code' && (
             <div className="space-y-3">
+              <div className="flex items-start gap-2.5 px-3.5 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+                <div>
+                  <p className="font-medium">Sandboxed execution — MVP mode</p>
+                  <p className="text-xs mt-0.5 text-amber-700">
+                    Code runs in a subprocess with a 10 s timeout. Network, filesystem, and OS-level
+                    imports are blocked at save time. Do not rely on this for untrusted user input.
+                  </p>
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Runtime</label>
                 <div className="flex gap-2">
@@ -539,11 +395,16 @@ function ToolModal({
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Code</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Code
+                  <span className="ml-2 text-xs font-normal text-gray-400">
+                    Must define a <code className="font-mono">run(params)</code> function that returns a dict
+                  </span>
+                </label>
                 <textarea
                   value={codeSource}
                   onChange={(e) => setCodeSource(e.target.value)}
-                  placeholder={`def run(params):\n    return {"result": params}`}
+                  placeholder={`def run(params):\n    return {"result": params["value"] * 2}`}
                   rows={8}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 resize-y font-mono bg-gray-950 text-green-400"
                 />
@@ -551,45 +412,7 @@ function ToolModal({
             </div>
           )}
 
-          {toolType === 'database' && (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Connection string</label>
-                <input
-                  value={dbConn}
-                  onChange={(e) => setDbConn(e.target.value)}
-                  placeholder="postgresql://user:pass@host:5432/dbname"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-mono outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Query template</label>
-                <textarea
-                  value={dbQuery}
-                  onChange={(e) => setDbQuery(e.target.value)}
-                  placeholder="SELECT * FROM table WHERE id = {{id}}"
-                  rows={4}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 resize-none font-mono"
-                />
-              </div>
-            </div>
-          )}
-
-          {toolType === 'custom' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Config JSON</label>
-              <textarea
-                value={customRaw}
-                onChange={(e) => setCustomRaw(e.target.value)}
-                placeholder='{ "key": "value" }'
-                rows={7}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 resize-none font-mono"
-              />
-            </div>
-          )}
-
-          {/* JSON preview (all types) */}
-          {toolType !== 'custom' && <JsonPreview data={previewConfig} />}
+          <JsonPreview data={previewConfig} />
 
           {error && (
             <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -631,6 +454,7 @@ export default function ToolsPage() {
   const [loading, setLoading] = useState(true);
   const [modalTool, setModalTool] = useState<Tool | null | 'new'>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   async function load(p = page) {
     setLoading(true);
@@ -647,14 +471,17 @@ export default function ToolsPage() {
 
   useEffect(() => { load(); }, [page]);
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this tool? This cannot be undone.')) return;
+  function handleDelete(id: string) {
+    setConfirmDeleteId(id);
+  }
+
+  async function doDelete(id: string) {
     setDeleting(id);
     try {
       await toolsApi.delete(id);
       load();
     } catch {
-      alert('Failed to delete tool.');
+      // ignore
     } finally {
       setDeleting(null);
     }
@@ -761,6 +588,14 @@ export default function ToolsPage() {
           tool={modalTool === 'new' ? null : modalTool}
           onClose={() => setModalTool(null)}
           onSaved={() => load()}
+        />
+      )}
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="Delete Tool"
+          message="Delete this tool? This cannot be undone."
+          onConfirm={() => { const id = confirmDeleteId; setConfirmDeleteId(null); doDelete(id); }}
+          onCancel={() => setConfirmDeleteId(null)}
         />
       )}
     </div>

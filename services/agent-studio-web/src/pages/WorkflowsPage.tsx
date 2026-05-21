@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GitBranch, Plus, Trash2, Loader2, X, AlertCircle, Tag, Clock, Pencil } from 'lucide-react';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { flowsApi } from '../api/flows';
 import type { Flow, FlowVersion } from '../types/api';
 
@@ -87,6 +88,7 @@ function VersionsPanel({ flow, onClose }: { flow: Flow; onClose: () => void }) {
   const [versions, setVersions] = useState<FlowVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
   useEffect(() => {
     flowsApi.listVersions(flow.id)
@@ -94,17 +96,15 @@ function VersionsPanel({ flow, onClose }: { flow: Flow; onClose: () => void }) {
       .finally(() => setLoading(false));
   }, [flow.id]);
 
-  async function publish() {
-    if (!confirm('Publish the latest version of this workflow?')) return;
+  async function doPublish() {
     const draftVersion = versions.find((v) => v.status === 'draft') ?? versions[0];
-    if (!draftVersion) { alert('No version to publish.'); return; }
+    if (!draftVersion) return;
     setPublishing(true);
     try {
       await flowsApi.publishVersion(flow.id, draftVersion.id);
-      alert('Published successfully.');
       onClose();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to publish.');
+    } catch {
+      // ignore
     } finally {
       setPublishing(false);
     }
@@ -161,7 +161,7 @@ function VersionsPanel({ flow, onClose }: { flow: Flow; onClose: () => void }) {
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-xl hover:bg-gray-50 transition-colors">Close</button>
           <button
-            onClick={publish}
+            onClick={() => setShowPublishConfirm(true)}
             disabled={publishing || versions.length === 0}
             className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors"
           >
@@ -170,6 +170,16 @@ function VersionsPanel({ flow, onClose }: { flow: Flow; onClose: () => void }) {
           </button>
         </div>
       </div>
+      {showPublishConfirm && (
+        <ConfirmDialog
+          title="Publish Workflow"
+          message="Publish the latest version of this workflow?"
+          confirmLabel="Publish"
+          variant="warning"
+          onConfirm={() => { setShowPublishConfirm(false); doPublish(); }}
+          onCancel={() => setShowPublishConfirm(false)}
+        />
+      )}
     </div>
   );
 }
@@ -184,6 +194,7 @@ export default function WorkflowsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [versionsFlow, setVersionsFlow] = useState<Flow | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   async function load(p = page) {
@@ -201,14 +212,17 @@ export default function WorkflowsPage() {
 
   useEffect(() => { load(); }, [page]);
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this workflow? All versions will be removed.')) return;
+  function handleDelete(id: string) {
+    setConfirmDeleteId(id);
+  }
+
+  async function doDelete(id: string) {
     setDeleting(id);
     try {
       await flowsApi.delete(id);
       load();
     } catch {
-      alert('Failed to delete workflow.');
+      // ignore
     } finally {
       setDeleting(null);
     }
@@ -323,6 +337,14 @@ export default function WorkflowsPage() {
 
       {showCreate && <CreateFlowModal onClose={() => setShowCreate(false)} onSaved={() => load()} />}
       {versionsFlow && <VersionsPanel flow={versionsFlow} onClose={() => setVersionsFlow(null)} />}
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="Delete Workflow"
+          message="Delete this workflow? All versions will be removed."
+          onConfirm={() => { const id = confirmDeleteId; setConfirmDeleteId(null); doDelete(id); }}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
     </div>
   );
 }
