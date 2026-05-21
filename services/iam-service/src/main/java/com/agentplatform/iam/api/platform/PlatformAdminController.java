@@ -52,7 +52,7 @@ public class PlatformAdminController {
             @PathVariable UUID tenantId) {
         UUID userId = UUID.fromString(ctx.userId());
         return ResponseEntity.ok(ApiResponse.ok(
-                tenantService.listTenantWorkspacesForPlatformAdmin(userId, tenantId).stream()
+                tenantService.listTenantWorkspacesForAdminOrMember(userId, tenantId).stream()
                         .map(WorkspaceDto::from)
                         .toList()));
     }
@@ -62,7 +62,7 @@ public class PlatformAdminController {
             @AuthenticationPrincipal AuthContext ctx,
             @PathVariable UUID tenantId) {
         UUID userId = UUID.fromString(ctx.userId());
-        tenantService.requirePlatformAdmin(userId);
+        tenantService.requirePlatformOrTenantAdmin(userId, tenantId);
         return ResponseEntity.ok(ApiResponse.ok(entitlementService.listFeatureEntitlements(tenantId)));
     }
 
@@ -103,7 +103,7 @@ public class PlatformAdminController {
             @AuthenticationPrincipal AuthContext ctx,
             @PathVariable UUID tenantId) {
         UUID userId = UUID.fromString(ctx.userId());
-        tenantService.requirePlatformAdmin(userId);
+        tenantService.requirePlatformOrTenantAdmin(userId, tenantId);
         return ResponseEntity.ok(ApiResponse.ok(entitlementService.listModelEntitlements(tenantId)));
     }
 

@@ -219,6 +219,28 @@ public class TenantService {
         }
     }
 
+    /**
+     * Allows the operation if the caller is a platform admin OR a tenant_admin of the
+     * target tenant. Use this for read-only cross-tenant data that tenant admins should
+     * be able to access for their own tenant.
+     */
+    public void requirePlatformOrTenantAdmin(UUID userId, UUID tenantId) {
+        try {
+            requirePlatformAdmin(userId);
+        } catch (ForbiddenException e) {
+            requireTenantAdmin(userId, tenantId);
+        }
+    }
+
+    /**
+     * Lists active workspaces for {@code tenantId}. Allowed for platform admins and for
+     * tenant admins who are active members of the target tenant.
+     */
+    public List<Workspace> listTenantWorkspacesForAdminOrMember(UUID userId, UUID tenantId) {
+        requirePlatformOrTenantAdmin(userId, tenantId);
+        return workspaceRepo.findByTenantIdAndStatus(tenantId, "active");
+    }
+
     public void requirePlatformAdmin(UUID userId) {
         List<UUID> membershipIds = membershipRepo.findByUserIdAndStatus(userId, "active")
                 .stream().map(Membership::getId).toList();
