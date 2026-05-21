@@ -75,7 +75,7 @@ func (w *IngestionWorker) Run(ctx context.Context) {
 		if err := w.process(ctx, job); err != nil {
 			log.Printf("[IngestionWorker] error ingestion_id=%s: %v", job.IngestionID, err)
 			w.setIngestionStatus(ctx, job.IngestionID, "failed")
-			w.q.PushDLQ(ctx, w.dlqKey, w.ingestionQueue, raw, err.Error())
+			w.q.PushDLQ(ctx, w.dlqKey+":"+job.TenantID, w.ingestionQueue, raw, err.Error())
 		}
 	}
 }
@@ -116,6 +116,7 @@ func (w *IngestionWorker) process(ctx context.Context, job model.IngestionJob) e
 		ChunkStrategy:  job.ChunkStrategy,
 		ChunkConfig:    job.ChunkConfig,
 		EmbeddingModel: job.EmbeddingModel,
+		Mode:           job.Mode,
 	}
 	if err := w.q.Push(ctx, w.chunkingQueue, chunkJob); err != nil {
 		return err

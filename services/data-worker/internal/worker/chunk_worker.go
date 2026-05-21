@@ -67,7 +67,7 @@ func (w *ChunkWorker) Run(ctx context.Context) {
 		if err := w.process(ctx, job); err != nil {
 			log.Printf("[ChunkWorker] error ingestion_id=%s: %v", job.IngestionID, err)
 			w.setIngestionStatus(ctx, job.IngestionID, "failed")
-			w.q.PushDLQ(ctx, w.dlqKey, w.chunkingQueue, raw, err.Error())
+			w.q.PushDLQ(ctx, w.dlqKey+":"+job.TenantID, w.chunkingQueue, raw, err.Error())
 		}
 	}
 }
@@ -96,6 +96,34 @@ func (w *ChunkWorker) process(ctx context.Context, job model.ChunkingJob) error 
 	// If the document produced no chunks (e.g. empty file), mark completed immediately.
 	if len(chunks) == 0 {
 		w.setIngestionStatus(ctx, job.IngestionID, "completed")
+		return nil
+	}
+
+	// chunk_only mode: persist chunks but do NOT push EmbedJobs.
+	// The caller can later trigger embedding via POST /ingestions/{id}/embed.
+	if job.Mode == "chunk_only" {
+		now := time.Now().UTC()
+		for _, ch := range chunks {
+			chunkID := uuid.New()
+			meta, _ := json.Marshal(map[string]any{
+				"chunk_index":    ch.Index,
+				"chunk_strategy": job.ChunkStrategy,
+				"document_id":    job.DocumentID,
+			})
+			err := w.db.QueryRow(ctx, `
+				INSERT INTO chunks (id, tenant_id, workspace_id, document_id, ingestion_id, chunk_index, content, metadata, created_at, updated_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				ON CONFLICT (tenant_id, workspace_id, ingestion_id, chunk_index)
+				DO UPDATE SET updated_at = EXCLUDED.updated_at
+				RETURNING id`,
+				chunkID, job.TenantID, job.WorkspaceID, job.DocumentID, job.IngestionID, ch.Index, ch.Content, meta, now, now,
+			).Scan(&chunkID)
+			if err != nil {
+				return fmt.Errorf("insert chunk idx=%d: %w", ch.Index, err)
+			}
+		}
+		w.setIngestionStatus(ctx, job.IngestionID, "chunked")
+		log.Printf("[ChunkWorker] ingestion_id=%s chunked (chunk_only mode, %d chunks)", job.IngestionID, len(chunks))
 		return nil
 	}
 

@@ -80,7 +80,7 @@ func (w *EmbedWorker) Run(ctx context.Context) {
 
 		if err := w.process(ctx, job); err != nil {
 			log.Printf("[EmbedWorker] error chunk_id=%s: %v", job.ChunkID, err)
-			w.q.PushDLQ(ctx, w.dlqKey, w.embeddingQueue, raw, err.Error())
+			w.q.PushDLQ(ctx, w.dlqKey+":"+job.TenantID, w.embeddingQueue, raw, err.Error())
 		}
 	}
 }

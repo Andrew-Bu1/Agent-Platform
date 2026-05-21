@@ -14,6 +14,7 @@ type IngestionJob struct {
 	ChunkStrategy  string          `json:"chunk_strategy"` // fixed_size | recursive_split | semantic_chunking
 	ChunkConfig    json.RawMessage `json:"chunk_config"`
 	EmbeddingModel string          `json:"embedding_model"`
+	Mode           string          `json:"mode"` // "full_pipeline" | "chunk_only"
 }
 
 // ChunkingJob is pushed to REDIS_CHUNKING_QUEUE after the file has been
@@ -28,6 +29,7 @@ type ChunkingJob struct {
 	ChunkStrategy  string          `json:"chunk_strategy"`
 	ChunkConfig    json.RawMessage `json:"chunk_config"`
 	EmbeddingModel string          `json:"embedding_model"`
+	Mode           string          `json:"mode"` // "full_pipeline" | "chunk_only"
 }
 
 // EmbedJob is pushed to REDIS_EMBEDDING_QUEUE for every individual chunk.
