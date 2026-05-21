@@ -694,6 +694,23 @@ export interface Document {
   name: string;
   storage_path: string;
   metadata: Record<string, unknown> | null;
+  status: string;
+  active_ingestion_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── DataHub — Chunks ─────────────────────────────────────────────────────────
+
+export interface Chunk {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  document_id: string;
+  ingestion_id: string;
+  chunk_index: number;
+  content: string;
+  metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -705,6 +722,7 @@ export interface Ingestion {
   tenant_id: string;
   workspace_id: string;
   document_id: string;
+  mode: 'full_pipeline' | 'chunk_only';
   chunk_strategy: string;
   chunk_config: Record<string, unknown>;
   embedding_model: string;
@@ -714,8 +732,13 @@ export interface Ingestion {
 }
 
 export interface CreateIngestionRequest {
-  chunk_strategy: string;
+  mode?: 'full_pipeline' | 'chunk_only';
+  chunk_strategy: 'fixed_size' | 'recursive_split' | 'semantic_chunking';
   chunk_config: Record<string, unknown>;
+  embedding_model?: string; // required for full_pipeline, optional for chunk_only
+}
+
+export interface TriggerEmbedRequest {
   embedding_model: string;
 }
 

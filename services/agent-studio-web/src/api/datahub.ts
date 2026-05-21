@@ -6,6 +6,8 @@ import type {
   Document,
   Ingestion,
   CreateIngestionRequest,
+  TriggerEmbedRequest,
+  Chunk,
   DlqEntry,
   DlqListResponse,
 } from '../types/api';
@@ -67,10 +69,36 @@ export const ingestionsApi = {
     api.get<Ingestion>(`/datahub/ingestions/${id}`),
 
   /**
-   * Trigger ingestion (chunking + embedding) for a document.
+   * Trigger ingestion (chunking + optional embedding) for a document.
    */
   trigger: (documentId: string, body: CreateIngestionRequest) =>
     api.post<Ingestion>(`/datahub/documents/${documentId}/ingestions`, body),
+
+  /**
+   * Trigger embedding for an existing chunked ingestion.
+   */
+  embed: (id: string, body: TriggerEmbedRequest) =>
+    api.post<Ingestion>(`/datahub/ingestions/${id}/embed`, body),
+
+  delete: (id: string) =>
+    api.delete<void>(`/datahub/ingestions/${id}`),
+};
+
+// ─── Chunks ────────────────────────────────────────────────────────────────────────
+
+export const chunksApi = {
+  listByIngestion: (ingestionId: string) =>
+    api.get<Chunk[]>(`/datahub/ingestions/${ingestionId}/chunks`),
+
+  get: (id: string) =>
+    api.get<Chunk>(`/datahub/chunks/${id}`),
+};
+
+// ─── Active-ingestion ─────────────────────────────────────────────────────────────
+
+export const activeIngestionApi = {
+  set: (documentId: string, ingestionId: string) =>
+    api.put<Document>(`/datahub/documents/${documentId}/active-ingestion`, { ingestion_id: ingestionId }),
 };
 
 // ─── DLQ Admin ────────────────────────────────────────────────────────────────
