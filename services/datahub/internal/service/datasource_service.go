@@ -31,6 +31,7 @@ func (s *DatasourceService) Create(ctx context.Context, req model.CreateDatasour
 		WorkspaceID:     workspaceID,
 		Name:            req.Name,
 		Description:     req.Description,
+		Status:          "active",
 		CreatedByUserID: createdByUserID,
 		CreatedAt:       now,
 		UpdatedAt:       now,

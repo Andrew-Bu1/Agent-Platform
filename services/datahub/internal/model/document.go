@@ -16,6 +16,7 @@ type Document struct {
 	FileHash        string          `db:"file_hash"`
 	StoragePath     string          `db:"storage_path"`
 	Metadata        json.RawMessage `db:"metadata" swaggertype:"object"`
+	Status          string          `db:"status"`
 	CreatedByUserID *uuid.UUID      `db:"created_by_user_id"`
 	CreatedAt       time.Time       `db:"created_at"`
 	UpdatedAt       time.Time       `db:"updated_at"`
@@ -39,6 +40,7 @@ type DocumentResponse struct {
 	Name            string          `json:"name"`
 	StoragePath     string          `json:"storage_path"`
 	Metadata        json.RawMessage `json:"metadata,omitempty" swaggertype:"object"`
+	Status          string          `json:"status"`
 	CreatedByUserID *uuid.UUID      `json:"created_by_user_id,omitempty"`
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
@@ -53,6 +55,7 @@ func (d *Document) ToResponse() DocumentResponse {
 		Name:            d.Name,
 		StoragePath:     d.StoragePath,
 		Metadata:        d.Metadata,
+		Status:          d.Status,
 		CreatedByUserID: d.CreatedByUserID,
 		CreatedAt:       d.CreatedAt,
 		UpdatedAt:       d.UpdatedAt,

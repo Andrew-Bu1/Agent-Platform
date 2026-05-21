@@ -24,7 +24,7 @@ erDiagram
         VARCHAR255  storage_path        "MinIO object path: datasource_id/document_id/filename"
         JSONB       metadata            "default '{}'"
         VARCHAR50   status              "uploaded | processing | indexed | failed | archived | deleted"
-        UUID        uploaded_by_user_id "nullable — NULL for service-client callers"
+        UUID        created_by_user_id  "nullable — NULL for service-client callers"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }

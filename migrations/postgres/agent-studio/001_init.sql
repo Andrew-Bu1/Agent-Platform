@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS agents (
 
     definition_json JSONB NOT NULL DEFAULT '{}'::jsonb,
 
+    tool_ids UUID[] NOT NULL DEFAULT '{}',
+    model_id VARCHAR(255) NULL,
+
     status VARCHAR(50) NOT NULL DEFAULT 'draft',
     -- draft, active, archived
 

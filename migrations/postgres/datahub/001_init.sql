@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS documents (
     status VARCHAR(50) NOT NULL DEFAULT 'uploaded',
     -- uploaded, processing, indexed, failed, archived, deleted
     
-    uploaded_by_user_id UUID NULL,
+    created_by_user_id UUID NULL,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

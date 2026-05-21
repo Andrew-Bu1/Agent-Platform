@@ -20,8 +20,8 @@ func NewDocumentRepository(db *pgxpool.Pool) *DocumentRepository {
 
 func (r *DocumentRepository) Insert(ctx context.Context, d *model.Document) error {
 	const q = `
-		INSERT INTO documents (id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, created_by_user_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		INSERT INTO documents (id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, created_by_user_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 
 	_, err := r.db.Exec(ctx, q,
 		d.ID,
@@ -32,6 +32,7 @@ func (r *DocumentRepository) Insert(ctx context.Context, d *model.Document) erro
 		d.FileHash,
 		d.StoragePath,
 		d.Metadata,
+		d.Status,
 		d.CreatedByUserID,
 		d.CreatedAt,
 		d.UpdatedAt,
@@ -44,7 +45,7 @@ func (r *DocumentRepository) Insert(ctx context.Context, d *model.Document) erro
 
 func (r *DocumentRepository) GetByID(ctx context.Context, id, tenantID, workspaceID uuid.UUID) (*model.Document, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, created_by_user_id, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, created_by_user_id, created_at, updated_at
 		FROM documents
 		WHERE id = $1 AND tenant_id = $2 AND workspace_id = $3`
 
@@ -60,6 +61,7 @@ func (r *DocumentRepository) GetByID(ctx context.Context, id, tenantID, workspac
 		&d.FileHash,
 		&d.StoragePath,
 		&d.Metadata,
+		&d.Status,
 		&d.CreatedByUserID,
 		&d.CreatedAt,
 		&d.UpdatedAt,
@@ -71,7 +73,7 @@ func (r *DocumentRepository) GetByID(ctx context.Context, id, tenantID, workspac
 
 func (r *DocumentRepository) GetByDatasourceID(ctx context.Context, datasourceID, tenantID, workspaceID uuid.UUID) ([]*model.Document, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, created_by_user_id, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, created_by_user_id, created_at, updated_at
 		FROM documents
 		WHERE datasource_id = $1 AND tenant_id = $2 AND workspace_id = $3
 		ORDER BY created_at DESC`
@@ -94,6 +96,7 @@ func (r *DocumentRepository) GetByDatasourceID(ctx context.Context, datasourceID
 			&d.FileHash,
 			&d.StoragePath,
 			&d.Metadata,
+			&d.Status,
 			&d.CreatedByUserID,
 			&d.CreatedAt,
 			&d.UpdatedAt,
@@ -127,7 +130,7 @@ func (r *DocumentRepository) Update(ctx context.Context, d *model.Document) erro
 
 func (r *DocumentRepository) FindByHash(ctx context.Context, datasourceID, tenantID, workspaceID uuid.UUID, fileHash string) (*model.Document, error) {
 	const q = `
-		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, created_by_user_id, created_at, updated_at
+		SELECT id, tenant_id, workspace_id, datasource_id, name, file_hash, storage_path, metadata, status, created_by_user_id, created_at, updated_at
 		FROM documents
 		WHERE datasource_id = $1 AND file_hash = $2 AND tenant_id = $3 AND workspace_id = $4
 		LIMIT 1`
@@ -144,6 +147,7 @@ func (r *DocumentRepository) FindByHash(ctx context.Context, datasourceID, tenan
 		&d.FileHash,
 		&d.StoragePath,
 		&d.Metadata,
+		&d.Status,
 		&d.CreatedByUserID,
 		&d.CreatedAt,
 		&d.UpdatedAt,

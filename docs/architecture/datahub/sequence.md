@@ -219,9 +219,9 @@ sequenceDiagram
 
     C->>DH: POST /datasources<br/>Authorization: Bearer <token><br/>{name, description?}
     DH->>DH: Extract tenantId + workspaceId + createdByUserID from JWT<br/>(createdByUserID = sub claim for user tokens; NULL for service clients)
-    DH->>DB: INSERT INTO datasources<br/>(id=UUIDv7, tenant_id, workspace_id, name, description, created_by_user_id)
+    DH->>DB: INSERT INTO datasources<br/>(id=UUIDv7, tenant_id, workspace_id, name, description, status='active', created_by_user_id)
     DB-->>DH: new row
-    DH-->>C: 201 Created {id, name, description, created_by_user_id?, createdAt}
+    DH-->>C: 201 Created {id, name, description, status, created_by_user_id?, createdAt}
 ```
 
 ---
@@ -246,9 +246,9 @@ sequenceDiagram
         DB-->>DH: no row
         DH->>Minio: PutObject(bucket, "<datasource_id>/<document_id>/<filename>", bytes)
         Minio-->>DH: ok
-        DH->>DB: INSERT INTO documents<br/>(id, tenant_id, workspace_id, datasource_id,<br/>name, file_hash, storage_path, metadata, created_by_user_id)
+        DH->>DB: INSERT INTO documents<br/>(id, tenant_id, workspace_id, datasource_id,<br/>name, file_hash, storage_path, metadata, status='uploaded', created_by_user_id)
         DB-->>DH: new row
-        DH-->>C: 201 Created<br/>{id, tenant_id, workspace_id, datasource_id,<br/>name, storage_path, metadata,<br/>created_by_user_id?, created_at, updated_at}
+        DH-->>C: 201 Created<br/>{id, tenant_id, workspace_id, datasource_id,<br/>name, storage_path, metadata, status,<br/>created_by_user_id?, created_at, updated_at}
     end
 ```
 
@@ -500,9 +500,9 @@ sequenceDiagram
 
     C->>DH: POST /datasources {name, description?}
     DH->>DSRepo: Insert(datasource)
-    DSRepo->>DB: INSERT INTO datasources
+    DSRepo->>DB: INSERT INTO datasources (status='active')
     DB-->>DSRepo: row
-    DSRepo-->>DH: DatasourceResponse
+    DSRepo-->>DH: DatasourceResponse {status}
     DH-->>C: 201 DatasourceResponse
 
     C->>DH: GET /datasources

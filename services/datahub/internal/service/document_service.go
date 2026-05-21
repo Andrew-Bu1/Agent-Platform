@@ -77,6 +77,7 @@ func (s *DocumentService) Create(ctx context.Context, req model.CreateDocumentRe
 		FileHash:        fileHash,
 		StoragePath:     storagePath,
 		Metadata:        metadata,
+		Status:          "uploaded",
 		CreatedByUserID: createdByUserID,
 		CreatedAt:       now,
 		UpdatedAt:       now,
