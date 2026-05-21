@@ -9,6 +9,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,6 +27,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtVerifier jwtVerifier;
 
+    @Value("${app.jwt.issuer:}")
+    private String jwtIssuer;
+
+    @Value("${app.jwt.audience:}")
+    private String jwtAudience;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -38,7 +45,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = header.substring(7);
         try {
-            JWTClaimsSet claims = jwtVerifier.verify(token);
+            String issuer   = (jwtIssuer   != null && !jwtIssuer.isBlank())   ? jwtIssuer   : null;
+            String audience = (jwtAudience != null && !jwtAudience.isBlank()) ? jwtAudience : null;
+            JWTClaimsSet claims = jwtVerifier.verify(token, issuer, audience);
+
+            String tokenType = getStringClaim(claims, "token_type");
+            if (!"access".equals(tokenType)) {
+                SecurityContextHolder.clearContext();
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             AuthContext ctx = buildAuthContext(claims);
 
             List<SimpleGrantedAuthority> authorities = ctx.permissions().stream()
